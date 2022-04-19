@@ -9,10 +9,6 @@ class MyModel(nn.Module):
     def __init__(self, input_size, output_size):
         super(MyModel, self).__init__()
 
-        # Get cpu or gpu device for training.
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print("Using {} device".format(device))
-
         # Define the layers of the network
         self.flatten = nn.Flatten()
         self.linear_relu_stack = nn.Sequential(
@@ -21,8 +17,7 @@ class MyModel(nn.Module):
             nn.Linear(512, 512),
             nn.ReLU(),
             nn.Linear(512, output_size)
-        ).to(device)
-        print(self)
+        )
 
     def forward(self, x):
         # Define how to forward the network
@@ -31,10 +26,12 @@ class MyModel(nn.Module):
         return logits
 
 
-def train(dataloader, model, loss_fn, optimizer):
+def train(device, dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
     model.train()
     for i, (X, y) in enumerate(dataloader):
+        X, y = X.to(device), y.to(device)
+
         # Compute prediction error
         y_hat = model(X)
         loss = loss_fn(y_hat, y)
@@ -49,7 +46,7 @@ def train(dataloader, model, loss_fn, optimizer):
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
-def test(dataloader, model, loss_fn):
+def test(device, dataloader, model, loss_fn):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     model.eval()
@@ -58,6 +55,7 @@ def test(dataloader, model, loss_fn):
 
     with torch.no_grad():
         for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
             y_hat = model(X)
             total_test_loss += loss_fn(y_hat, y).item()
             total_correct += (y_hat.argmax(1) == y).type(torch.float).sum().item()
@@ -67,6 +65,9 @@ def test(dataloader, model, loss_fn):
 
 
 def main():
+    # Get cpu or gpu device for training.
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     # Hyper-parameters for this tutorial
     learning_rate = 1e-3
     batch_size = 64
@@ -130,7 +131,7 @@ def main():
     # To define a neural network in PyTorch, we create a class that inherits from nn.Module.
     # We define the layers of the network in the __init__ function and specify how data will pass through the network in the forward function.
 
-    model = MyModel(input_size, output_size)
+    model = MyModel(input_size, output_size).to(device)
 
     # [Optimizing the Model Parameters]
     # https://pytorch.org/tutorials/beginner/basics/quickstart_tutorial.html#working-with-data
@@ -148,8 +149,8 @@ def main():
 
     for t in range(epochs):
         print(f"Epoch {t + 1}\n-------------------------------")
-        train(train_dataloader, model, loss_fn, optimizer)
-        test(test_dataloader, model, loss_fn)
+        train(device, train_dataloader, model, loss_fn, optimizer)
+        test(device, test_dataloader, model, loss_fn)
 
     print("Done!")
 
