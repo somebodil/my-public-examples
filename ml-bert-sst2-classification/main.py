@@ -49,6 +49,9 @@ def train(dataloader, model, loss_fn, optimizer):
 
 
 def main():
+    # Device --
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     # Hyper parameter --
     np.random.seed(4885)
     learning_rate = 1e-3
@@ -68,7 +71,7 @@ def main():
     train_dataloader = DataLoader(GlueSst2Dataset(tokenizer, training_data, max_length), batch_size=batch_size)
     test_dataloader = DataLoader(GlueSst2Dataset(tokenizer, test_data, max_length), batch_size=batch_size)
 
-    model = BertForSequenceClassification.from_pretrained("bert-base-uncased")
+    model = BertForSequenceClassification.from_pretrained("bert-base-uncased").to(device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 

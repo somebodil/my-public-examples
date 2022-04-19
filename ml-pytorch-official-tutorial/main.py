@@ -22,7 +22,7 @@ class MyModel(nn.Module):
     def forward(self, x):
         # Define how to forward the network
         x = self.flatten(x)
-        logits = self.linear_relu_stackS(x)
+        logits = self.linear_relu_stack(x)
         return logits
 
 
@@ -43,7 +43,7 @@ def train(device, dataloader, model, loss_fn, optimizer):
 
         if i % 100 == 0:
             loss, current = loss.item(), i * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            print(f"Train loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
 def test(device, dataloader, model, loss_fn):
@@ -60,8 +60,9 @@ def test(device, dataloader, model, loss_fn):
             total_test_loss += loss_fn(y_hat, y).item()
             total_correct += (y_hat.argmax(1) == y).type(torch.float).sum().item()
 
-    print(f"Test Error: \n "
-          f"Accuracy: {(100 * (total_correct / size)):>0.1f}%, Avg loss: {(total_test_loss / num_batches):>8f} \n")
+    print(f"Test Error: "
+          f"Accuracy: {(100 * (total_correct / size)):>0.1f}%, "
+          f"Avg loss: {(total_test_loss / num_batches):>8f} \n")
 
 
 def main():
@@ -71,7 +72,7 @@ def main():
     # Hyper-parameters for this tutorial
     learning_rate = 1e-3
     batch_size = 64
-    epochs = 5
+    epochs = 10
 
     # [loading data in PyTorch]
     # https://pytorch.org/tutorials/beginner/basics/quickstart_tutorial.html#working-with-data
