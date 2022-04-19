@@ -42,7 +42,7 @@ def train(device, dataloader, model, loss_fn, optimizer):
         optimizer.step()
 
         if i % 100 == 0:
-            loss, current = loss.item(), i * X.shape[0]
+            loss, current = loss.item(), i * dataloader.batch_size
             print(f"Train loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
