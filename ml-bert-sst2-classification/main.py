@@ -1,6 +1,8 @@
+import copy
+
 import numpy as np
-from datasets import load_dataset
 import torch
+from datasets import load_dataset
 from torch import nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -9,10 +11,9 @@ from transformers import BertTokenizer, BertModel, BertConfig
 
 
 class BertClassifier(nn.Module):
-    def __init__(self, hidden_size, num_hidden_layers, num_attention_heads, num_classes, is_cased):
+    def __init__(self, hidden_size, num_hidden_layers, num_attention_heads, num_classes, bert_model_name):
         super(BertClassifier, self).__init__()
 
-        bert_model_name = 'bert-base-cased' if is_cased else 'bert-base-uncased'
         bert_config = BertConfig(hidden_size=hidden_size,
                                  num_hidden_layers=num_hidden_layers,
                                  num_attention_heads=num_attention_heads)
@@ -25,12 +26,11 @@ class BertClassifier(nn.Module):
         return x
 
 
-def train(device, dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset)
+def train(device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
     model.train().to(device)
     loss_fn.to(device)
 
-    for i, batch in enumerate(tqdm(dataloader)):
+    for i, batch in enumerate(tqdm(train_dataloader)):
         batch = {k: v.to(device) for k, v in batch.items()}
 
         # Compute prediction error
@@ -42,20 +42,31 @@ def train(device, dataloader, model, loss_fn, optimizer):
         loss.backward()
         optimizer.step()
 
-        if i % 10 == 0:
-            loss, current = loss.item(), i * dataloader.batch_size
-            print(f"Train loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+    with torch.no_grad():
+        val_len = len(validation_dataloader.dataset['labels'])
+        correct_val = 0
+        best_acc = 0
+        best_model = None
 
+        for i, batch in enumerate(validation_dataloader):
+            batch = {k: v.to(device) for k, v in batch.items()}
+            predict = model(batch['input_ids'], batch['attention_mask'])  # validate
+            correct_val += (predict.argmax(dim=1) == batch['labels']).sum().item()  # cumulate correct predict
 
-def encode(examples, tokenizer, max_length):
-    encoded = tokenizer(examples['sentence'], max_length=max_length, truncation=True, padding='max_length')
-    return encoded
+        current_acc = correct_val / val_len
+        if best_acc < current_acc:
+            best_acc = current_acc
+            best_model = copy.deepcopy(model)
+
+        print(f"Validation current_acc / best_acc : {current_acc}, {best_acc}")
+
+    return best_model
 
 
 def main():
     # Device --
-    # device = "cuda" if torch.cuda.is_available() else "cpu"
-    device = "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # device = "cpu"
 
     # Hyper parameter --
     np.random.seed(4885)
@@ -66,25 +77,35 @@ def main():
     hidden_size = 768
     num_hidden_layers = 12
     num_attention_heads = 12
+    model_name = "bert-base-uncased"
 
     # Dataset --
     train_dataset = load_dataset('glue', 'sst2', split="train")
+    validation_dataset = load_dataset('glue', 'sst2', split="validation")
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    tokenizer = BertTokenizer.from_pretrained(model_name)
 
-    train_dataset = train_dataset.map(lambda examples: encode(examples, tokenizer, max_length), batched=True)
+    def encode(examples):
+        return tokenizer(examples['sentence'], max_length=max_length, truncation=True, padding='max_length')
+
+    train_dataset = train_dataset.map(encode, batched=True)
     train_dataset = train_dataset.map(lambda examples: {'labels': examples['label']}, batched=True)
     train_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'labels'])
 
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
+    validation_dataset = validation_dataset.map(encode, batched=True)
+    validation_dataset = validation_dataset.map(lambda examples: {'labels': examples['label']}, batched=True)
+    validation_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'labels'])
 
-    model = BertClassifier(hidden_size, num_hidden_layers, num_attention_heads, np.unique(train_dataset['label']).shape[0], True)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
+    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
+
+    model = BertClassifier(hidden_size, num_hidden_layers, num_attention_heads, np.unique(train_dataset['label']).shape[0], model_name)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
     for t in range(epochs):
-        train(device, train_dataloader, model, loss_fn, optimizer)
+        train(device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
 
 
 if __name__ == '__main__':
