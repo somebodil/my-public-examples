@@ -14,10 +14,11 @@ class BertClassifier(nn.Module):
     def __init__(self, hidden_size, num_hidden_layers, num_attention_heads, num_classes, bert_model_name):
         super(BertClassifier, self).__init__()
 
-        bert_config = BertConfig(hidden_size=hidden_size,
-                                 num_hidden_layers=num_hidden_layers,
-                                 num_attention_heads=num_attention_heads)
-        self.model = BertModel(bert_config).from_pretrained(bert_model_name)
+        # bert_config = BertConfig(hidden_size=hidden_size,
+        #                          num_hidden_layers=num_hidden_layers,
+        #                          num_attention_heads=num_attention_heads)
+        # self.model = BertModel(bert_config).from_pretrained(bert_model_name)
+        self.model = BertModel.from_pretrained(bert_model_name)
         self.linear = nn.Linear(in_features=hidden_size, out_features=num_classes)
 
     def forward(self, input_ids, attention_mask):
@@ -27,7 +28,8 @@ class BertClassifier(nn.Module):
 
 
 def train(device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
-    model.train().to(device)
+    model.train()
+    model.to(device)
     loss_fn.to(device)
 
     for i, batch in enumerate(tqdm(train_dataloader)):
@@ -42,11 +44,12 @@ def train(device, train_dataloader, validation_dataloader, model, loss_fn, optim
         loss.backward()
         optimizer.step()
 
+    best_model = None
+
     with torch.no_grad():
         val_len = len(validation_dataloader.dataset['labels'])
         correct_val = 0
         best_acc = 0
-        best_model = None
 
         for i, batch in enumerate(validation_dataloader):
             batch = {k: v.to(device) for k, v in batch.items()}
@@ -66,18 +69,17 @@ def train(device, train_dataloader, validation_dataloader, model, loss_fn, optim
 def main():
     # Device --
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    # device = "cpu"
 
     # Hyper parameter --
     np.random.seed(4885)
     learning_rate = 1e-3
     batch_size = 16
     epochs = 5
-    max_length = 512
+    max_length = 128
     hidden_size = 768
     num_hidden_layers = 12
     num_attention_heads = 12
-    model_name = "bert-base-uncased"
+    model_name = "bert-base-cased"
 
     # Dataset --
     train_dataset = load_dataset('glue', 'sst2', split="train")
