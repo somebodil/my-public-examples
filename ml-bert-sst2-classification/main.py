@@ -27,41 +27,40 @@ class BertClassifier(nn.Module):
         return x
 
 
-def train(device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
-    model.train()
-    model.to(device)
-    loss_fn.to(device)
-
-    for i, batch in enumerate(tqdm(train_dataloader)):
-        batch = {k: v.to(device) for k, v in batch.items()}
-
-        # Compute prediction error
-        predict = model(batch['input_ids'], batch['attention_mask'])
-        loss = loss_fn(predict, batch['labels'])
-
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
+def train(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
+    best_acc = 0
     best_model = None
 
-    with torch.no_grad():
-        val_len = len(validation_dataloader.dataset['labels'])
-        correct_val = 0
-        best_acc = 0
+    for t in range(epochs):
+        model.to(device)
+        loss_fn.to(device)
 
-        for i, batch in enumerate(validation_dataloader):
+        model.train()
+        for i, batch in enumerate(tqdm(train_dataloader)):
             batch = {k: v.to(device) for k, v in batch.items()}
-            predict = model(batch['input_ids'], batch['attention_mask'])  # validate
-            correct_val += (predict.argmax(dim=1) == batch['labels']).sum().item()  # cumulate correct predict
 
-        current_acc = correct_val / val_len
-        if best_acc < current_acc:
-            best_acc = current_acc
-            best_model = copy.deepcopy(model)
+            optimizer.zero_grad()
+            predict = model(batch['input_ids'], batch['attention_mask'])
+            loss = loss_fn(predict, batch['labels'])
+            loss.backward()
+            optimizer.step()
 
-        print(f"Validation current_acc / best_acc : {current_acc}, {best_acc}")
+        model.eval()
+        with torch.no_grad():
+            val_len = len(validation_dataloader.dataset['labels'])
+            correct_val = 0
+
+            for _, val_batch in enumerate(validation_dataloader):
+                val_batch = {k: v.to(device) for k, v in val_batch.items()}
+                predict = model(val_batch['input_ids'], val_batch['attention_mask'])  # validate
+                correct_val += (predict.argmax(dim=1) == val_batch['labels']).sum().item()  # cumulate correct predict
+
+            current_acc = correct_val / val_len
+            if best_acc < current_acc:
+                best_acc = current_acc
+                best_model = copy.deepcopy(model)
+
+            print(f"Validation current_acc / best_acc : {current_acc}, {best_acc}")
 
     return best_model
 
@@ -72,7 +71,7 @@ def main():
 
     # Hyper parameter --
     np.random.seed(4885)
-    learning_rate = 1e-3
+    learning_rate = 1e-5
     batch_size = 16
     epochs = 5
     max_length = 128
@@ -106,8 +105,7 @@ def main():
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
-    for t in range(epochs):
-        train(device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
+    train(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
 
 
 if __name__ == '__main__':
