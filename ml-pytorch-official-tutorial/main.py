@@ -32,12 +32,9 @@ def train(device, dataloader, model, loss_fn, optimizer):
     for i, (X, y) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
 
-        # Compute prediction error
+        optimizer.zero_grad()
         y_hat = model(X)
         loss = loss_fn(y_hat, y)
-
-        # Backpropagation
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
@@ -133,6 +130,7 @@ def main():
     # We define the layers of the network in the __init__ function and specify how data will pass through the network in the forward function.
 
     model = MyModel(input_size, output_size).to(device)
+    print(model)
 
     # [Optimizing the Model Parameters]
     # https://pytorch.org/tutorials/beginner/basics/quickstart_tutorial.html#working-with-data

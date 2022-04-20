@@ -98,7 +98,8 @@ def main():
 
     # Prepare model, loss function, optimizer ---
 
-    model = LinearModel()  # Try MLPModel() and see the performance difference
+    # model = LinearModel()  # Try MLPModel() and see the performance difference
+    model = MLPModel()  # Try MLPModel() and see the performance difference
     loss_fn = nn.MSELoss()
     optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
@@ -119,11 +120,10 @@ def main():
 
         input_x = torch.Tensor(train_X)
         true_y = torch.Tensor(train_y)
-        pred_y = model(input_x)
-
-        train_loss = loss_fn(pred_y.squeeze(), true_y)
 
         optimizer.zero_grad()
+        pred_y = model(input_x)
+        train_loss = loss_fn(pred_y.squeeze(), true_y)
         train_loss.backward()
         optimizer.step()
 
@@ -143,13 +143,12 @@ def main():
     # Test --
 
     model.eval()
-    optimizer.zero_grad()
-    input_x = torch.Tensor(test_X)
-    true_y = torch.Tensor(test_y)
-    pred_y = model(input_x)
-    test_loss = loss_fn(pred_y.squeeze(), true_y)
-
-    print(f'test_loss : {test_loss}')
+    with torch.no_grad():
+        input_x = torch.Tensor(test_X)
+        true_y = torch.Tensor(test_y)
+        pred_y = model(input_x)
+        test_loss = loss_fn(pred_y.squeeze(), true_y)
+        print(f'test_loss : {test_loss}')
 
     # Report -- (optional)
     # ...

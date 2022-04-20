@@ -78,11 +78,10 @@ def main():
 
         input_x = torch.Tensor(train_X)
         true_y = torch.Tensor(train_y).long()
-        pred_y = model(input_x)
-
-        test_loss = loss_fn(pred_y, true_y)
 
         optimizer.zero_grad()
+        pred_y = model(input_x)
+        test_loss = loss_fn(pred_y, true_y)
         test_loss.backward()
         optimizer.step()
 
