@@ -14,10 +14,10 @@ class BertClassifier(nn.Module):
     def __init__(self, hidden_size, num_hidden_layers, num_attention_heads, num_classes, bert_model_name):
         super(BertClassifier, self).__init__()
 
-        # bert_config = BertConfig(hidden_size=hidden_size,
-        #                          num_hidden_layers=num_hidden_layers,
-        #                          num_attention_heads=num_attention_heads)
-        # self.model = BertModel(bert_config).from_pretrained(bert_model_name)
+        bert_config = BertConfig(hidden_size=hidden_size,
+                                 num_hidden_layers=num_hidden_layers,
+                                 num_attention_heads=num_attention_heads)
+        self.model = BertModel(bert_config).from_pretrained(bert_model_name)
         self.model = BertModel.from_pretrained(bert_model_name)
         self.linear = nn.Linear(in_features=hidden_size, out_features=num_classes)
 
@@ -78,14 +78,14 @@ def main():
     hidden_size = 768
     num_hidden_layers = 12
     num_attention_heads = 12
-    model_name = "bert-base-cased"
+    bert_model_name = "bert-base-cased"
 
     # Dataset --
     train_dataset = load_dataset('glue', 'sst2', split="train")
     validation_dataset = load_dataset('glue', 'sst2', split="validation")
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
-    tokenizer = BertTokenizer.from_pretrained(model_name)
+    tokenizer = BertTokenizer.from_pretrained(bert_model_name)
 
     def encode(examples):
         return tokenizer(examples['sentence'], max_length=max_length, truncation=True, padding='max_length')
@@ -101,7 +101,7 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = BertClassifier(hidden_size, num_hidden_layers, num_attention_heads, np.unique(train_dataset['label']).shape[0], model_name)
+    model = BertClassifier(hidden_size, num_hidden_layers, num_attention_heads, np.unique(train_dataset['label']).shape[0], bert_model_name)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
