@@ -9,17 +9,16 @@ from torch import nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import BertTokenizer, BertModel, BertConfig, set_seed
+from transformers import BertTokenizer, BertModel, set_seed
 
 
 class BertForClassification(nn.Module):
-    def __init__(self, bert_model_name, hidden_size, num_classes):
+    def __init__(self, bert_model_name, out_features):
         super(BertForClassification, self).__init__()
 
-        config = BertConfig(hidden_size=hidden_size)
-        self.model = BertModel(config).from_pretrained(bert_model_name)
         self.model = BertModel.from_pretrained(bert_model_name)
-        self.linear = nn.Linear(in_features=hidden_size, out_features=num_classes)
+        self.linear = nn.Linear(in_features=self.model.embeddings.word_embeddings.weight.shape[1],  # Get Bert hidden size
+                                out_features=out_features)
 
     def forward(self, input_ids, attention_mask):
         _, bert_out = self.model(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
@@ -28,13 +27,13 @@ class BertForClassification(nn.Module):
 
 
 def train(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
+    model.to(device)
+    loss_fn.to(device)
+
     best_acc = 0
     best_model = None
 
     for t in range(epochs):
-        model.to(device)
-        loss_fn.to(device)
-
         model.train()
         for i, batch in enumerate(tqdm(train_dataloader)):
             batch = {k: v.to(device) for k, v in batch.items()}
@@ -94,7 +93,6 @@ def main():
     batch_size = args.batch_size
     epochs = args.epochs
     seq_max_length = args.seq_max_length
-    hidden_size = args.hidden_size
     model_name = args.model_name
 
     # Dataset --
@@ -118,7 +116,7 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = BertForClassification(model_name, hidden_size, np.unique(train_dataset['label']).shape[0])
+    model = BertForClassification(model_name, np.unique(train_dataset['label']).shape[0])
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
