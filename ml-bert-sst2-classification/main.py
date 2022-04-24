@@ -1,4 +1,6 @@
+import argparse
 import copy
+import datetime
 
 import numpy as np
 import torch
@@ -7,16 +9,14 @@ from torch import nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import BertTokenizer, BertModel, BertConfig
+from transformers import BertTokenizer, BertModel, BertConfig, set_seed
 
 
 class BertClassifier(nn.Module):
-    def __init__(self, hidden_size, num_hidden_layers, num_attention_heads, num_classes, bert_model_name):
+    def __init__(self, bert_model_name, hidden_size, num_classes):
         super(BertClassifier, self).__init__()
 
-        bert_config = BertConfig(hidden_size=hidden_size,
-                                 num_hidden_layers=num_hidden_layers,
-                                 num_attention_heads=num_attention_heads)
+        bert_config = BertConfig(hidden_size=hidden_size)
         self.model = BertModel(bert_config).from_pretrained(bert_model_name)
         self.model = BertModel.from_pretrained(bert_model_name)
         self.linear = nn.Linear(in_features=hidden_size, out_features=num_classes)
@@ -66,29 +66,46 @@ def train(epochs, device, train_dataloader, validation_dataloader, model, loss_f
 
 
 def main():
+    # Parser --
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model_name', default='bert-base-cased', type=str)  # should be bert-xxx
+    parser.add_argument('--batch_size', default=16, type=int)
+    parser.add_argument('--hidden_size', default=768, type=int)
+    parser.add_argument('--seq_max_length', default=128, type=int)
+    parser.add_argument('--epochs', default=10, type=int)
+    parser.add_argument('--lr', default=1e-5, type=float)
+    parser.add_argument('--gpu', default=0, type=int)
+    parser.add_argument('--seed', default=4885, type=int)
+
+    args = parser.parse_args()
+    setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
+    setattr(args, 'time', datetime.datetime.now().strftime('%Y%m%d-%H:%M:%S'))
+
+    print('[List of arguments]')
+    for a in args.__dict__:
+        print(f'{a}: {args.__dict__[a]}')
+
     # Device --
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = args.device
 
     # Hyper parameter --
-    np.random.seed(4885)
-    learning_rate = 1e-5
-    batch_size = 16
-    epochs = 5
-    max_length = 128
-    hidden_size = 768
-    num_hidden_layers = 12
-    num_attention_heads = 12
-    bert_model_name = "bert-base-cased"
+    set_seed(args.seed)
+    learning_rate = args.lr
+    batch_size = args.batch_size
+    epochs = args.epochs
+    seq_max_length = args.seq_max_length
+    hidden_size = args.hidden_size
+    model_name = args.model_name
 
     # Dataset --
     train_dataset = load_dataset('glue', 'sst2', split="train")
     validation_dataset = load_dataset('glue', 'sst2', split="validation")
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
-    tokenizer = BertTokenizer.from_pretrained(bert_model_name)
+    tokenizer = BertTokenizer.from_pretrained(model_name)
 
     def encode(examples):
-        return tokenizer(examples['sentence'], max_length=max_length, truncation=True, padding='max_length')
+        return tokenizer(examples['sentence'], max_length=seq_max_length, truncation=True, padding='max_length')
 
     train_dataset = train_dataset.map(encode, batched=True)
     train_dataset = train_dataset.map(lambda examples: {'labels': examples['label']}, batched=True)
@@ -101,7 +118,7 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = BertClassifier(hidden_size, num_hidden_layers, num_attention_heads, np.unique(train_dataset['label']).shape[0], bert_model_name)
+    model = BertClassifier(model_name, hidden_size, np.unique(train_dataset['label']).shape[0])
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
