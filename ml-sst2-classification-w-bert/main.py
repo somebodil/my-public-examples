@@ -16,8 +16,8 @@ class BertForClassification(nn.Module):
     def __init__(self, bert_model_name, hidden_size, num_classes):
         super(BertForClassification, self).__init__()
 
-        bert_config = BertConfig(hidden_size=hidden_size)
-        self.model = BertModel(bert_config).from_pretrained(bert_model_name)
+        config = BertConfig(hidden_size=hidden_size)
+        self.model = BertModel(config).from_pretrained(bert_model_name)
         self.model = BertModel.from_pretrained(bert_model_name)
         self.linear = nn.Linear(in_features=hidden_size, out_features=num_classes)
 
