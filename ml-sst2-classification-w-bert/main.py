@@ -12,9 +12,9 @@ from tqdm import tqdm
 from transformers import BertTokenizer, BertModel, BertConfig, set_seed
 
 
-class BertClassifier(nn.Module):
+class BertForClassification(nn.Module):
     def __init__(self, bert_model_name, hidden_size, num_classes):
-        super(BertClassifier, self).__init__()
+        super(BertForClassification, self).__init__()
 
         bert_config = BertConfig(hidden_size=hidden_size)
         self.model = BertModel(bert_config).from_pretrained(bert_model_name)
@@ -118,7 +118,7 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = BertClassifier(model_name, hidden_size, np.unique(train_dataset['label']).shape[0])
+    model = BertForClassification(model_name, hidden_size, np.unique(train_dataset['label']).shape[0])
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
