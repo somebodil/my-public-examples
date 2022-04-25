@@ -7,7 +7,7 @@ from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import GPT2Model, set_seed, GPT2Tokenizer
+from transformers import set_seed, GPT2Tokenizer
 from transformers.models.gpt2.modeling_gpt2 import *
 
 

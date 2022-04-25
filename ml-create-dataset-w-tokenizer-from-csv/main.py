@@ -28,7 +28,7 @@ def main():
     train_dataset = GlueSst2Dataset(df_train, tokenizer, 256)  # Glue sst2 train data max token length is 64, so 256 is enough
     train_dataloader = DataLoader(train_dataset, batch_size=16)
 
-    for train_input, train_label in enumerate(train_dataloader):
+    for train_input, train_label in train_dataloader:
         input_ids = train_input['input_ids'].to(device)
         attention_mask = train_input['attention_mask'].to(device)
         labels = train_label.to(device)
