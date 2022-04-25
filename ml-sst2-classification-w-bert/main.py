@@ -21,9 +21,9 @@ class BertForClassification(nn.Module):
                                 out_features=out_features)
 
     def forward(self, input_ids, attention_mask):
-        _, x = self.model(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
-        x = self.linear(x)
-        return x
+        _, bert_out = self.model(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
+        linear_out = self.linear(bert_out)
+        return linear_out
 
 
 def train(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
