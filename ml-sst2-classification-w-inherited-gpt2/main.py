@@ -304,7 +304,7 @@ def main():
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token  # prevents error where there is no token.
+    tokenizer.pad_token = tokenizer.eos_token
 
     def encode(examples):
         return tokenizer(examples['sentence'], max_length=seq_max_length, truncation=True, padding='max_length')

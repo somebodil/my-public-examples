@@ -107,7 +107,7 @@ def main():
 
     train_dataset = train_dataset.map(encode, batched=True)
     train_dataset = train_dataset.map(lambda examples: {'labels': examples['label']}, batched=True)
-    train_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'labels'])
+    train_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'labels'])  # set_format creates make it as tensor
 
     validation_dataset = validation_dataset.map(encode, batched=True)
     validation_dataset = validation_dataset.map(lambda examples: {'labels': examples['label']}, batched=True)
