@@ -14,7 +14,7 @@ from transformers.models.gpt2.modeling_gpt2 import *
 class CustomGPT2Model(GPT2Model):
     """
     Trick of Customizing original pretrained model, is as below :
-     - Get inherit pretrained model + modifying minimum as
+     - Inherit pretrained model + get from_pretrained + modifying as minimum as we can
     """
 
     def forward(
