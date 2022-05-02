@@ -1,22 +1,38 @@
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
-from transformers import GPT2Tokenizer, BatchEncoding
+from transformers import GPT2Tokenizer
 
+
+# class GlueSst2Dataset(Dataset):
+#
+#     def __init__(self, data_frame, tokenizer, max_length):
+#         self.len = len(data_frame['label'])
+#         self.data_frame = data_frame
+#         self.tokenizer = tokenizer
+#         self.max_length = max_length
+#
+#     def __len__(self):
+#         return self.len
+#
+#     def __getitem__(self, idx):
+#         return {"labels": self.data_frame['label'][idx], **self.tokenizer(self.data_frame['sentence'][idx], padding='max_length', max_length=self.max_length, truncation=True, return_tensors="pt")}
 
 class GlueSst2Dataset(Dataset):
 
     def __init__(self, data_frame, tokenizer, max_length):
         self.len = len(data_frame['label'])
-        self.data_frame = data_frame
-        self.tokenizer = tokenizer
-        self.max_length = max_length
+        self.data = [
+            {"labels": data_frame['label'][idx],
+             **tokenizer(data_frame['sentence'][idx], padding='max_length', max_length=max_length, truncation=True, return_tensors="pt")}
+            for idx in range(self.len)
+        ]
 
     def __len__(self):
         return self.len
 
     def __getitem__(self, idx):
-        return {"labels": self.data_frame['label'][idx], **self.tokenizer(self.data_frame['sentence'][idx], padding='max_length', max_length=self.max_length, truncation=True, return_tensors="pt")}
+        return self.data[idx]
 
 
 def main():
@@ -35,7 +51,8 @@ def main():
         attention_mask = batch['attention_mask'].to(device)
         labels = batch['labels'].to(device)
 
-        print(f"input_ids : {input_ids}\nattention_mask : {attention_mask}\nlabels : {labels}")
+        if i % 100 == 0:
+            print(f"input_ids : {input_ids}\nattention_mask : {attention_mask}\nlabels : {labels}")
 
 
 if __name__ == "__main__":
