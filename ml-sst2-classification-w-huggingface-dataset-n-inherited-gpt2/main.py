@@ -249,7 +249,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
 
         model.eval()
         with torch.no_grad():
-            val_len = len(validation_dataloader.dataset['labels'])
+            val_len = len(validation_dataloader)
             correct_val = 0
 
             for _, val_batch in enumerate(validation_dataloader):
