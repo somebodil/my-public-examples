@@ -79,7 +79,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
                 best_acc = current_acc
                 best_model = copy.deepcopy(model)
 
-            print(f"Validation current_acc / best_acc : {current_acc}, {best_acc}")
+            print(f"\nValidation current_acc / best_acc : {current_acc}, {best_acc}")
 
     return best_model
 
@@ -93,7 +93,7 @@ def main():
     parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--epochs', default=10, type=int)
     parser.add_argument('--lr', default=1e-5, type=float)
-    parser.add_argument('--gpu', default=0, type=int)
+    parser.add_argument('--gpu', default=3, type=int)
     parser.add_argument('--seed', default=4885, type=int)
 
     args = parser.parse_args()
