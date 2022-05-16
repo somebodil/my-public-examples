@@ -13,11 +13,11 @@ from transformers import BertTokenizer, BertModel, set_seed
 
 
 class BertForClassification(nn.Module):
-    def __init__(self, bert_model_name, out_features):
+    def __init__(self, bert_model_name, hidden_size, out_features):
         super(BertForClassification, self).__init__()
 
         self.model = BertModel.from_pretrained(bert_model_name)
-        self.linear = nn.Linear(in_features=self.model.embeddings.word_embeddings.weight.shape[1],  # Get Bert hidden size
+        self.linear = nn.Linear(in_features=hidden_size,
                                 out_features=out_features)
 
     def forward(self, input_ids, attention_mask):
@@ -68,8 +68,8 @@ def main():
     # Parser --
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # should be bert-xxx
+    parser.add_argument('--hidden_size', default=768, type=int)  # hidden size of bert-base-cased
     parser.add_argument('--batch_size', default=16, type=int)
-    parser.add_argument('--hidden_size', default=768, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--epochs', default=10, type=int)
     parser.add_argument('--lr', default=1e-5, type=float)
@@ -94,6 +94,7 @@ def main():
     epochs = args.epochs
     seq_max_length = args.seq_max_length
     model_name = args.model_name
+    hidden_size = args.hidden_size
 
     # Dataset --
     train_dataset = load_dataset('glue', 'sst2', split="train")
@@ -116,7 +117,7 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = BertForClassification(model_name, np.unique(train_dataset['label']).shape[0])
+    model = BertForClassification(model_name, hidden_size, np.unique(train_dataset['label']).shape[0])
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 

@@ -213,11 +213,11 @@ class CustomGPT2Model(GPT2Model):
 
 
 class Gpt2ForClassifier(nn.Module):
-    def __init__(self, gpt2_model_name, out_features):
+    def __init__(self, gpt2_model_name, hidden_size, out_features):
         super(Gpt2ForClassifier, self).__init__()
 
         self.model = CustomGPT2Model.from_pretrained(gpt2_model_name)
-        self.linear = nn.Linear(in_features=self.model.wte.weight.shape[1], out_features=out_features)
+        self.linear = nn.Linear(in_features=hidden_size, out_features=out_features)
 
     def forward(self, input_ids, attention_mask):
         gpt2_out, _ = self.model(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
@@ -272,6 +272,7 @@ def main():
     # Parser --
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', default='gpt2', type=str)  # should be gpt2-xxx
+    parser.add_argument('--hidden_size', default='768', type=int)  # should be determined by model_name
     parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--epochs', default=3, type=int)
@@ -297,6 +298,7 @@ def main():
     epochs = args.epochs
     seq_max_length = args.seq_max_length
     model_name = args.model_name
+    hidden_size = args.hidden_size
 
     # Dataset --
     train_dataset = load_dataset('glue', 'sst2', split="train")
@@ -320,7 +322,7 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = Gpt2ForClassifier(model_name, np.unique(train_dataset['label']).shape[0])
+    model = Gpt2ForClassifier(model_name, hidden_size, np.unique(train_dataset['label']).shape[0])
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
