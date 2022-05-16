@@ -2,14 +2,13 @@ import argparse
 import copy
 import datetime
 
-import numpy as np
+import pandas as pd
 import torch
-from datasets import load_dataset
 from torch import nn
 from torch.optim import Adam
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-from transformers import BertTokenizer, BertModel, set_seed
+from transformers import BertModel, set_seed, BertTokenizer
 
 
 class BertForClassification(nn.Module):
@@ -24,6 +23,27 @@ class BertForClassification(nn.Module):
         _, bert_out = self.model(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
         linear_out = self.linear(bert_out)
         return linear_out
+
+
+class GlueSst2Dataset(Dataset):
+
+    def __init__(self, data_frame, tokenizer, max_length):
+        self.len = len(data_frame['label'])
+        self.data_frame = data_frame
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, idx):
+        encodings = self.tokenizer(self.data_frame['sentence'][idx], padding='max_length', max_length=self.max_length, truncation=True, return_tensors="pt")
+
+        return {
+            "labels": self.data_frame['label'][idx],
+            "input_ids": encodings['input_ids'].squeeze(0),
+            "attention_mask": encodings['attention_mask'].squeeze(0)
+        }
 
 
 def train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
@@ -96,24 +116,15 @@ def main():
     model_name = args.model_name
     hidden_size = args.hidden_size
 
-    # Dataset --
-    train_dataset = load_dataset('glue', 'sst2', split="train")
-    validation_dataset = load_dataset('glue', 'sst2', split="validation")
+    df_train = pd.read_csv('./glue_sst2_train.tsv', delimiter='\t')
+    df_val = pd.read_csv('./glue_sst2_dev.tsv', delimiter='\t')
     data_label_num = 2
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)
 
-    def encode(examples):
-        return tokenizer(examples['sentence'], max_length=seq_max_length, truncation=True, padding='max_length')
-
-    train_dataset = train_dataset.map(encode, batched=True)
-    train_dataset = train_dataset.map(lambda examples: {'labels': examples['label']}, batched=True)
-    train_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'labels'])  # set_format creates make it as tensor
-
-    validation_dataset = validation_dataset.map(encode, batched=True)
-    validation_dataset = validation_dataset.map(lambda examples: {'labels': examples['label']}, batched=True)
-    validation_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'labels'])
+    train_dataset = GlueSst2Dataset(df_train, tokenizer, seq_max_length)
+    validation_dataset = GlueSst2Dataset(df_val, tokenizer, seq_max_length)
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
@@ -125,5 +136,5 @@ def main():
     train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

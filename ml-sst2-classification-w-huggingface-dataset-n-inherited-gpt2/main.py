@@ -2,7 +2,6 @@ import argparse
 import copy
 import datetime
 
-import numpy as np
 from datasets import load_dataset
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -230,7 +229,7 @@ class Gpt2ForClassifier(nn.Module):
         return linear_output
 
 
-def train(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
+def train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
     model.to(device)
     loss_fn.to(device)
 
@@ -303,6 +302,7 @@ def main():
     # Dataset --
     train_dataset = load_dataset('glue', 'sst2', split="train")
     validation_dataset = load_dataset('glue', 'sst2', split="validation")
+    data_label_num = 2
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
@@ -322,11 +322,11 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = Gpt2ForClassifier(model_name, hidden_size, np.unique(train_dataset['label']).shape[0])
+    model = Gpt2ForClassifier(model_name, hidden_size, data_label_num)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
-    train(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
+    train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
 
 
 if __name__ == '__main__':
