@@ -1,6 +1,6 @@
 import argparse
 import copy
-import datetime
+from datetime import datetime
 
 import pandas as pd
 import torch
@@ -91,14 +91,14 @@ def main():
     parser.add_argument('--hidden_size', default=768, type=int)  # hidden size of bert-base-cased
     parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=10, type=int)
+    parser.add_argument('--epochs', default=5, type=int)
     parser.add_argument('--lr', default=1e-5, type=float)
-    parser.add_argument('--gpu', default=3, type=int)
+    parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
 
     args = parser.parse_args()
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
-    setattr(args, 'time', datetime.datetime.now().strftime('%Y%m%d-%H:%M:%S'))
+    setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
 
     print('[List of arguments]')
     for a in args.__dict__:

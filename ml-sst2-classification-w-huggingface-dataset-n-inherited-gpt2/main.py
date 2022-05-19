@@ -1,6 +1,6 @@
 import argparse
 import copy
-import datetime
+from datetime import datetime
 
 from datasets import load_dataset
 from torch.optim import Adam
@@ -281,7 +281,7 @@ def main():
 
     args = parser.parse_args()
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
-    setattr(args, 'time', datetime.datetime.now().strftime('%Y%m%d-%H:%M:%S'))
+    setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
 
     print('[List of arguments]')
     for a in args.__dict__:
