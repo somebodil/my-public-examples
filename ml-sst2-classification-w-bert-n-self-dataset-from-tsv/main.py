@@ -15,12 +15,12 @@ class BertForClassification(nn.Module):
     def __init__(self, bert_model_name, hidden_size, out_features):
         super(BertForClassification, self).__init__()
 
-        self.model = BertModel.from_pretrained(bert_model_name)
+        self.bert = BertModel.from_pretrained(bert_model_name)
         self.linear = nn.Linear(in_features=hidden_size,
                                 out_features=out_features)
 
     def forward(self, input_ids, attention_mask):
-        _, bert_out = self.model(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
+        _, bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
         linear_out = self.linear(bert_out)
         return linear_out
 
