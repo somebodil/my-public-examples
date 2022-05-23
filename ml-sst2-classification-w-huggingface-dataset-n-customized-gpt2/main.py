@@ -13,7 +13,9 @@ from transformers.models.gpt2.modeling_gpt2 import *
 class CustomGPT2Model(GPT2Model):
     """
     Trick of Customizing original pretrained model, is as below :
-     - Inherit pretrained model + get from_pretrained + modifying as minimum as we can
+     1. Inherit pretrained model (like CustomGPT2Model, inheriting GPT2Model)
+     2. Do function shadowing on purpose on Inherited pretrained model (like forward method)
+     3. Use Inherited pretrained model as you are using original pretrained model
     """
 
     def forward(
@@ -215,11 +217,11 @@ class Gpt2ForClassifier(nn.Module):
     def __init__(self, gpt2_model_name, hidden_size, out_features):
         super(Gpt2ForClassifier, self).__init__()
 
-        self.model = CustomGPT2Model.from_pretrained(gpt2_model_name)
+        self.gpt2 = CustomGPT2Model.from_pretrained(gpt2_model_name)
         self.linear = nn.Linear(in_features=hidden_size, out_features=out_features)
 
     def forward(self, input_ids, attention_mask):
-        gpt2_out, _ = self.model(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
+        gpt2_out, _ = self.gpt2(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
 
         batch_size = gpt2_out.shape[0]
         gpt2_out_last_indices = attention_mask.squeeze().sum(dim=-1) - 1
