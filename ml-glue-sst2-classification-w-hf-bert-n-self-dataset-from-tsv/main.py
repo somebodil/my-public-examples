@@ -116,6 +116,7 @@ def main():
     model_name = args.model_name
     hidden_size = args.hidden_size
 
+    # Dataset --
     df_train = pd.read_csv('./glue_sst2_train.tsv', delimiter='\t')
     df_val = pd.read_csv('./glue_sst2_dev.tsv', delimiter='\t')
     dataset_num_labels = 2
