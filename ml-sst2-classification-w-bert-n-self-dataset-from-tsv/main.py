@@ -12,12 +12,12 @@ from transformers import BertModel, set_seed, BertTokenizer
 
 
 class BertForClassification(nn.Module):
-    def __init__(self, bert_model_name, hidden_size, out_features):
+    def __init__(self, bert_model_name, hidden_size, num_labels):
         super(BertForClassification, self).__init__()
 
         self.bert = BertModel.from_pretrained(bert_model_name)
         self.linear = nn.Linear(in_features=hidden_size,
-                                out_features=out_features)
+                                out_features=num_labels)
 
     def forward(self, input_ids, attention_mask):
         _, bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
@@ -118,7 +118,7 @@ def main():
 
     df_train = pd.read_csv('./glue_sst2_train.tsv', delimiter='\t')
     df_val = pd.read_csv('./glue_sst2_dev.tsv', delimiter='\t')
-    data_label_num = 2
+    dataset_num_labels = 2
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)
@@ -129,7 +129,7 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = BertForClassification(model_name, hidden_size, data_label_num)
+    model = BertForClassification(model_name, hidden_size, dataset_num_labels)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 

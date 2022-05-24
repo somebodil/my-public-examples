@@ -213,12 +213,12 @@ class CustomGPT2Model(GPT2Model):
         )
 
 
-class Gpt2ForClassifier(nn.Module):
-    def __init__(self, gpt2_model_name, hidden_size, out_features):
-        super(Gpt2ForClassifier, self).__init__()
+class Gpt2ForClassification(nn.Module):
+    def __init__(self, gpt2_model_name, hidden_size, num_labels):
+        super(Gpt2ForClassification, self).__init__()
 
         self.gpt2 = CustomGPT2Model.from_pretrained(gpt2_model_name)
-        self.linear = nn.Linear(in_features=hidden_size, out_features=out_features)
+        self.linear = nn.Linear(in_features=hidden_size, out_features=num_labels)
 
     def forward(self, input_ids, attention_mask):
         gpt2_out, _ = self.gpt2(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
@@ -304,27 +304,30 @@ def main():
     # Dataset --
     train_dataset = load_dataset('glue', 'sst2', split="train")
     validation_dataset = load_dataset('glue', 'sst2', split="validation")
-    data_label_num = 2
+    dataset_num_labels = 2
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
-    def encode(examples):
+    def encode_input(examples):
         return tokenizer(examples['sentence'], max_length=seq_max_length, truncation=True, padding='max_length')
 
-    train_dataset = train_dataset.map(encode, batched=True)
-    train_dataset = train_dataset.map(lambda examples: {'labels': examples['label']}, batched=True)
+    def format_output(examples):
+        return {'labels': examples['label']}
+
+    train_dataset = train_dataset.map(encode_input, batched=True)
+    train_dataset = train_dataset.map(format_output, batched=True)
     train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 
-    validation_dataset = validation_dataset.map(encode, batched=True)
-    validation_dataset = validation_dataset.map(lambda examples: {'labels': examples['label']}, batched=True)
+    validation_dataset = validation_dataset.map(encode_input, batched=True)
+    validation_dataset = validation_dataset.map(format_output, batched=True)
     validation_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = Gpt2ForClassifier(model_name, hidden_size, data_label_num)
+    model = Gpt2ForClassification(model_name, hidden_size, dataset_num_labels)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
