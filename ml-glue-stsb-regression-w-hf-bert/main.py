@@ -35,6 +35,11 @@ def get_score(output, label):
     return score
 
 
+def inference(batch, model):
+    predict = model(batch['input_ids'], batch['attention_mask'], batch['token_type_ids'])
+    return predict
+
+
 def validate_model(device, dataloader, model, loss_fn):
     model.to(device)
     loss_fn.to(device)
@@ -47,9 +52,8 @@ def validate_model(device, dataloader, model, loss_fn):
     with torch.no_grad():
         for _, batch in enumerate(dataloader):
             batch = {k: v.to(device) for k, v in batch.items()}
-            predict = model(batch['input_ids'], batch['attention_mask'], batch['token_type_ids'])  # validate
+            predict = inference(batch, model)
             loss = loss_fn(predict, batch['labels'])
-
             loss += loss.item()
             pred.extend(predict.clone().cpu().tolist())
             label.extend(batch['labels'].clone().cpu().tolist())
@@ -72,7 +76,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             batch = {k: v.to(device) for k, v in batch.items()}
 
             optimizer.zero_grad()
-            predict = model(batch['input_ids'], batch['attention_mask'], batch['token_type_ids'])
+            predict = inference(batch, model)
             loss = loss_fn(predict, batch['labels'])
             loss.backward()
             optimizer.step()
@@ -93,7 +97,7 @@ def main():
     parser.add_argument('--model_name', default='bert-base-cased', type=str)
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=1, type=int)  # FIXME dev
+    parser.add_argument('--epochs', default=1, type=int)  # TODO dev
     parser.add_argument('--lr', default=1e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
@@ -118,7 +122,7 @@ def main():
     model_name = args.model_name
 
     # Dataset --
-    train_dataset = load_dataset('glue', 'stsb', split="train[:10%]")  # FIXME dev
+    train_dataset = load_dataset('glue', 'stsb', split="train")
     validation_dataset = load_dataset('glue', 'stsb', split="validation")
     data_labels_num = 1
 

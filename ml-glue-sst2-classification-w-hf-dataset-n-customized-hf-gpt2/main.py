@@ -232,6 +232,11 @@ class Gpt2ForClassification(nn.Module):
         return linear_output
 
 
+def inference(batch, model):
+    predict = model(batch['input_ids'], batch['attention_mask'])
+    return predict
+
+
 def validate_model(device, dataloader, model, loss_fn):
     model.to(device)
     loss_fn.to(device)
@@ -244,8 +249,7 @@ def validate_model(device, dataloader, model, loss_fn):
     with torch.no_grad():
         for _, batch in enumerate(dataloader):
             batch = {k: v.to(device) for k, v in batch.items()}
-            predict = model(batch['input_ids'], batch['attention_mask'])
-
+            predict = inference(batch, model)
             loss += loss_fn(predict, batch['labels'])
             correct_val += (predict.argmax(dim=1) == batch['labels']).sum().item()
 
@@ -266,7 +270,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             batch = {k: v.to(device) for k, v in batch.items()}
 
             optimizer.zero_grad()
-            predict = model(batch['input_ids'], batch['attention_mask'])
+            predict = inference(batch, model)
             loss = loss_fn(predict, batch['labels'])
             loss.backward()
             optimizer.step()
@@ -287,7 +291,7 @@ def main():
     parser.add_argument('--model_name', default='gpt2', type=str)  # should be gpt2-xxx
     parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=1, type=int)  # FIXME dev
+    parser.add_argument('--epochs', default=1, type=int)  # TODO dev
     parser.add_argument('--lr', default=1e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
@@ -312,7 +316,7 @@ def main():
     model_name = args.model_name
 
     # Dataset --
-    train_dataset = load_dataset('glue', 'sst2', split="train[:3%]")  # FIXME dev
+    train_dataset = load_dataset('glue', 'sst2', split="train")
     validation_dataset = load_dataset('glue', 'sst2', split="validation")
     dataset_num_labels = 2
 

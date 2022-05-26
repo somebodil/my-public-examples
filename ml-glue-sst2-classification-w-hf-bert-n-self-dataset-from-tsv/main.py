@@ -47,6 +47,11 @@ class GlueSst2Dataset(Dataset):
         }
 
 
+def inference(batch, model):
+    predict = model(batch['input_ids'], batch['attention_mask'])
+    return predict
+
+
 def validate_model(device, dataloader, model, loss_fn):
     model.to(device)
     loss_fn.to(device)
@@ -59,8 +64,7 @@ def validate_model(device, dataloader, model, loss_fn):
     with torch.no_grad():
         for _, batch in enumerate(dataloader):
             batch = {k: v.to(device) for k, v in batch.items()}
-            predict = model(batch['input_ids'], batch['attention_mask'])
-
+            predict = inference(batch, model)
             loss += loss_fn(predict, batch['labels'])
             correct_val += (predict.argmax(dim=1) == batch['labels']).sum().item()
 
@@ -81,7 +85,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             batch = {k: v.to(device) for k, v in batch.items()}
 
             optimizer.zero_grad()
-            predict = model(batch['input_ids'], batch['attention_mask'])
+            predict = inference(batch, model)
             loss = loss_fn(predict, batch['labels'])
             loss.backward()
             optimizer.step()
@@ -102,7 +106,7 @@ def main():
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # should be bert-xxx
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=1, type=int)  # FIXME dev
+    parser.add_argument('--epochs', default=1, type=int)  # TODO dev
     parser.add_argument('--lr', default=1e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
@@ -128,7 +132,6 @@ def main():
 
     # Dataset --
     df_train = pd.read_csv('./glue_sst2_train.tsv', delimiter='\t')
-    df_train = df_train[0:1000]  # FIXME dev
     df_val = pd.read_csv('./glue_sst2_dev.tsv', delimiter='\t')
     dataset_num_labels = 2
 
