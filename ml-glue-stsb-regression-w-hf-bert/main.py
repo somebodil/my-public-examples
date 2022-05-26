@@ -10,16 +10,17 @@ from torch import nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import BertModel, BertTokenizer
+from transformers import BertModel, BertTokenizer, BertConfig
 from transformers import set_seed
 
 
 class BertForRegression(nn.Module):
-    def __init__(self, bert_model_name, hidden_size, num_labels):
+    def __init__(self, bert_model_name, num_labels):
         super(BertForRegression, self).__init__()
 
+        self.hidden_size = BertConfig.from_pretrained(bert_model_name).hidden_size
         self.bert = BertModel.from_pretrained(bert_model_name)
-        self.linear = nn.Linear(in_features=hidden_size, out_features=num_labels)
+        self.linear = nn.Linear(in_features=self.hidden_size, out_features=num_labels)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, input_ids, attention_mask, token_type_ids):
@@ -34,11 +35,35 @@ def get_score(output, label):
     return score
 
 
+def validate_model(device, dataloader, model, loss_fn):
+    model.to(device)
+    loss_fn.to(device)
+
+    loss = 0
+    pred = []
+    label = []
+
+    model.eval()
+    with torch.no_grad():
+        for _, batch in enumerate(dataloader):
+            batch = {k: v.to(device) for k, v in batch.items()}
+            predict = model(batch['input_ids'], batch['attention_mask'], batch['token_type_ids'])  # validate
+            loss = loss_fn(predict, batch['labels'])
+
+            loss += loss.item()
+            pred.extend(predict.clone().cpu().tolist())
+            label.extend(batch['labels'].clone().cpu().tolist())
+
+        score = get_score(np.array(pred), np.array(label))
+
+    return loss, score
+
+
 def train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
     model.to(device)
     loss_fn.to(device)
 
-    best_val_score = 0
+    best_score = 0
     best_model = None
 
     for t in range(epochs):
@@ -52,27 +77,12 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             loss.backward()
             optimizer.step()
 
-        model.eval()
-        with torch.no_grad():
-            val_loss = 0
-            val_pred = []
-            val_label = []
+        cur_loss, cur_score = validate_model(device, validation_dataloader, model, loss_fn)
+        if best_score < cur_score:
+            best_score = cur_score
+            best_model = copy.deepcopy(model)
 
-            for _, val_batch in enumerate(validation_dataloader):
-                val_batch = {k: v.to(device) for k, v in val_batch.items()}
-                predict = model(val_batch['input_ids'], val_batch['attention_mask'], val_batch['token_type_ids'])  # validate
-                loss = loss_fn(predict, val_batch['labels'])
-
-                val_loss += loss.item()
-                val_pred.extend(predict.clone().cpu().tolist())
-                val_label.extend(val_batch['labels'].clone().cpu().tolist())
-
-            val_score = get_score(np.array(val_pred), np.array(val_label))
-            if best_val_score < val_score:
-                best_val_score = val_score
-                best_model = copy.deepcopy(model)
-
-            print(f"\nValidation loss / cur_val_score / best_val_score : {val_loss} / {val_score} / {best_val_score}")
+        print(f"\nValidation loss / cur_val_score / best_score : {cur_loss} / {cur_score} / {best_score}")
 
     return best_model
 
@@ -81,15 +91,14 @@ def main():
     # Parser --
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', default='bert-base-cased', type=str)
-    parser.add_argument('--hidden_size', default='768', type=int)
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=1, type=int)
+    parser.add_argument('--epochs', default=1, type=int)  # FIXME dev
     parser.add_argument('--lr', default=1e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
 
-    args = parser.parse_args()
+    args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
     setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
 
@@ -107,11 +116,10 @@ def main():
     epochs = args.epochs
     seq_max_length = args.seq_max_length
     model_name = args.model_name
-    hidden_size = args.hidden_size
 
     # Dataset --
-    train_dataset = load_dataset('glue', 'stsb', split="train[:10%]")
-    validation_dataset = load_dataset('glue', 'stsb', split="validation[:10%]")
+    train_dataset = load_dataset('glue', 'stsb', split="train[:10%]")  # FIXME dev
+    validation_dataset = load_dataset('glue', 'stsb', split="validation")
     data_labels_num = 1
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
@@ -133,14 +141,16 @@ def main():
     validation_dataset = validation_dataset.map(format_target)
     validation_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'token_type_ids', 'labels'])
 
-    model = BertForRegression(model_name, hidden_size, data_labels_num)
+    model = BertForRegression(model_name, data_labels_num)
     loss_fn = nn.MSELoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
+    model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
+    best_loss, best_acc = validate_model(device, validation_dataloader, model, loss_fn)
+    print(f"\nValidation best_loss / best_score with best model: {best_loss} / {best_acc}")
 
 
 if __name__ == '__main__':

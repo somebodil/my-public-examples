@@ -214,11 +214,12 @@ class CustomGPT2Model(GPT2Model):
 
 
 class Gpt2ForClassification(nn.Module):
-    def __init__(self, gpt2_model_name, hidden_size, num_labels):
+    def __init__(self, gpt2_model_name, num_labels):
         super(Gpt2ForClassification, self).__init__()
 
+        self.hidden_size = GPT2Config.from_pretrained(gpt2_model_name).hidden_size
         self.gpt2 = CustomGPT2Model.from_pretrained(gpt2_model_name)
-        self.linear = nn.Linear(in_features=hidden_size, out_features=num_labels)
+        self.linear = nn.Linear(in_features=self.hidden_size, out_features=num_labels)
 
     def forward(self, input_ids, attention_mask):
         gpt2_out, _ = self.gpt2(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
@@ -229,6 +230,27 @@ class Gpt2ForClassification(nn.Module):
 
         linear_output = self.linear(gpt2_out)
         return linear_output
+
+
+def validate_model(device, dataloader, model, loss_fn):
+    model.to(device)
+    loss_fn.to(device)
+
+    loss = 0
+    correct_val = 0
+    data_len = len(dataloader)
+
+    model.eval()
+    with torch.no_grad():
+        for _, batch in enumerate(dataloader):
+            batch = {k: v.to(device) for k, v in batch.items()}
+            predict = model(batch['input_ids'], batch['attention_mask'])
+
+            loss += loss_fn(predict, batch['labels'])
+            correct_val += (predict.argmax(dim=1) == batch['labels']).sum().item()
+
+    current_acc = correct_val / data_len
+    return loss, current_acc
 
 
 def train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
@@ -249,22 +271,12 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             loss.backward()
             optimizer.step()
 
-        model.eval()
-        with torch.no_grad():
-            val_len = len(validation_dataloader)
-            correct_val = 0
+        current_loss, current_acc = validate_model(device, validation_dataloader, model, loss_fn)
+        if best_acc < current_acc:
+            best_acc = current_acc
+            best_model = copy.deepcopy(model)
 
-            for _, val_batch in enumerate(validation_dataloader):
-                val_batch = {k: v.to(device) for k, v in val_batch.items()}
-                predict = model(val_batch['input_ids'], val_batch['attention_mask'])  # validate
-                correct_val += (predict.argmax(dim=1) == val_batch['labels']).sum().item()  # cumulate correct predict
-
-            current_acc = correct_val / val_len
-            if best_acc < current_acc:
-                best_acc = current_acc
-                best_model = copy.deepcopy(model)
-
-            print(f"\nValidation current_acc / best_acc : {current_acc}, {best_acc}")
+        print(f"\nValidation loss / current_acc / best_acc : {current_loss}, {current_acc}, {best_acc}")
 
     return best_model
 
@@ -273,15 +285,14 @@ def main():
     # Parser --
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', default='gpt2', type=str)  # should be gpt2-xxx
-    parser.add_argument('--hidden_size', default='768', type=int)  # should be determined by model_name
     parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=3, type=int)
+    parser.add_argument('--epochs', default=1, type=int)  # FIXME dev
     parser.add_argument('--lr', default=1e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
 
-    args = parser.parse_args()
+    args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
     setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
 
@@ -299,10 +310,9 @@ def main():
     epochs = args.epochs
     seq_max_length = args.seq_max_length
     model_name = args.model_name
-    hidden_size = args.hidden_size
 
     # Dataset --
-    train_dataset = load_dataset('glue', 'sst2', split="train")
+    train_dataset = load_dataset('glue', 'sst2', split="train[:3%]")  # FIXME dev
     validation_dataset = load_dataset('glue', 'sst2', split="validation")
     dataset_num_labels = 2
 
@@ -327,11 +337,13 @@ def main():
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
 
-    model = Gpt2ForClassification(model_name, hidden_size, dataset_num_labels)
+    model = Gpt2ForClassification(model_name, dataset_num_labels)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
-    train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
+    model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
+    best_loss, best_acc = validate_model(device, validation_dataloader, model, loss_fn)
+    print(f"\nValidation best_loss / best_acc with best model: {best_loss} / {best_acc}")
 
 
 if __name__ == '__main__':
