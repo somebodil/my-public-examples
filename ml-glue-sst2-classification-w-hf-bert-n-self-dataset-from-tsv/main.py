@@ -20,8 +20,8 @@ class BertForClassification(nn.Module):
         self.linear = nn.Linear(in_features=self.hidden_size,
                                 out_features=num_labels)
 
-    def forward(self, input_ids, attention_mask):
-        _, bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
+    def forward(self, batch):
+        _, bert_out = self.bert(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], return_dict=False)
         linear_out = self.linear(bert_out)
         return linear_out
 
@@ -47,11 +47,6 @@ class GlueSst2Dataset(Dataset):
         }
 
 
-def inference(batch, model):
-    predict = model(batch['input_ids'], batch['attention_mask'])
-    return predict
-
-
 def validate_model(device, dataloader, model, loss_fn):
     model.to(device)
     loss_fn.to(device)
@@ -64,7 +59,7 @@ def validate_model(device, dataloader, model, loss_fn):
     with torch.no_grad():
         for _, batch in enumerate(dataloader):
             batch = {k: v.to(device) for k, v in batch.items()}
-            predict = inference(batch, model)
+            predict = model(batch)
             loss += loss_fn(predict, batch['labels'])
             correct_val += (predict.argmax(dim=1) == batch['labels']).sum().item()
 
@@ -85,7 +80,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             batch = {k: v.to(device) for k, v in batch.items()}
 
             optimizer.zero_grad()
-            predict = inference(batch, model)
+            predict = model(batch)
             loss = loss_fn(predict, batch['labels'])
             loss.backward()
             optimizer.step()

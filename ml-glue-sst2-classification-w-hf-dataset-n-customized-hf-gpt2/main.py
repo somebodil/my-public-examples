@@ -221,20 +221,15 @@ class Gpt2ForClassification(nn.Module):
         self.gpt2 = CustomGPT2Model.from_pretrained(gpt2_model_name)
         self.linear = nn.Linear(in_features=self.hidden_size, out_features=num_labels)
 
-    def forward(self, input_ids, attention_mask):
-        gpt2_out, _ = self.gpt2(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
+    def forward(self, batch):
+        gpt2_out, _ = self.gpt2(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], return_dict=False)
 
         batch_size = gpt2_out.shape[0]
-        gpt2_out_last_indices = attention_mask.squeeze().sum(dim=-1) - 1
+        gpt2_out_last_indices = batch['attention_mask'].squeeze().sum(dim=-1) - 1
         gpt2_out = gpt2_out[[i for i in range(batch_size)], gpt2_out_last_indices]
 
         linear_output = self.linear(gpt2_out)
         return linear_output
-
-
-def inference(batch, model):
-    predict = model(batch['input_ids'], batch['attention_mask'])
-    return predict
 
 
 def validate_model(device, dataloader, model, loss_fn):
@@ -249,7 +244,7 @@ def validate_model(device, dataloader, model, loss_fn):
     with torch.no_grad():
         for _, batch in enumerate(dataloader):
             batch = {k: v.to(device) for k, v in batch.items()}
-            predict = inference(batch, model)
+            predict = model(batch)
             loss += loss_fn(predict, batch['labels'])
             correct_val += (predict.argmax(dim=1) == batch['labels']).sum().item()
 
@@ -270,7 +265,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             batch = {k: v.to(device) for k, v in batch.items()}
 
             optimizer.zero_grad()
-            predict = inference(batch, model)
+            predict = model(batch)
             loss = loss_fn(predict, batch['labels'])
             loss.backward()
             optimizer.step()

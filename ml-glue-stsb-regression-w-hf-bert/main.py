@@ -23,8 +23,8 @@ class BertForRegression(nn.Module):
         self.linear = nn.Linear(in_features=self.hidden_size, out_features=num_labels)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, input_ids, attention_mask, token_type_ids):
-        _, bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, return_dict=False)
+    def forward(self, batch):
+        _, bert_out = self.bert(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], token_type_ids=batch['token_type_ids'], return_dict=False)
         linear_out = self.linear(bert_out)
         sigmoid_out = self.sigmoid(linear_out) * 5
         return sigmoid_out.squeeze()
@@ -33,11 +33,6 @@ class BertForRegression(nn.Module):
 def get_score(output, label):
     score = stats.pearsonr(output, label)[0]
     return score
-
-
-def inference(batch, model):
-    predict = model(batch['input_ids'], batch['attention_mask'], batch['token_type_ids'])
-    return predict
 
 
 def validate_model(device, dataloader, model, loss_fn):
@@ -52,7 +47,7 @@ def validate_model(device, dataloader, model, loss_fn):
     with torch.no_grad():
         for _, batch in enumerate(dataloader):
             batch = {k: v.to(device) for k, v in batch.items()}
-            predict = inference(batch, model)
+            predict = model(batch)
             loss = loss_fn(predict, batch['labels'])
             loss += loss.item()
             pred.extend(predict.clone().cpu().tolist())
@@ -76,7 +71,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             batch = {k: v.to(device) for k, v in batch.items()}
 
             optimizer.zero_grad()
-            predict = inference(batch, model)
+            predict = model(batch)
             loss = loss_fn(predict, batch['labels'])
             loss.backward()
             optimizer.step()
