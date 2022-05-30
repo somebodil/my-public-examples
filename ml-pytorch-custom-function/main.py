@@ -21,8 +21,8 @@ def main():
     ref_loss = cross_entropy_fn(x, y)
     my_loss = my_cross_entropy(x, y)
 
-    print(f"ref_loss : {ref_loss}")
-    print(f"my_loss : {my_loss}")
+    print(f"ref_loss : {ref_loss}")  # ref_loss : 1.8656104803085327
+    print(f"my_loss : {my_loss}")  # my_loss : 1.8656104803085327
 
 
 if __name__ == '__main__':
