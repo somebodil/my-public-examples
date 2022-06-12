@@ -1,8 +1,6 @@
-class A:
-    @classmethod
-    def foo(cls, a):
-        print(cls)
-        print(a)
+import decimal
 
-
-A.foo(10)
+width = 10
+precision = 4
+value = decimal.Decimal('12.34567')
+print(f'result: {value:{width}.{precision}}')  # result:      12.35

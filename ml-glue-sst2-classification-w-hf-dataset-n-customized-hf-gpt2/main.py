@@ -226,40 +226,45 @@ class Gpt2ForClassification(nn.Module):
 
         batch_size = gpt2_out.shape[0]
         gpt2_out_last_indices = batch['attention_mask'].squeeze().sum(dim=-1) - 1
-        gpt2_out = gpt2_out[[i for i in range(batch_size)], gpt2_out_last_indices]
+        sentence_out = gpt2_out[[i for i in range(batch_size)], gpt2_out_last_indices]
 
-        linear_output = self.linear(gpt2_out)
-        return linear_output
+        return self.linear(sentence_out)
 
 
-def validate_model(device, dataloader, model, loss_fn):
+def evaluate_model(device, dataloader, model, loss_fn):
     model.to(device)
     loss_fn.to(device)
 
-    loss = 0
-    correct_val = 0
-    data_len = len(dataloader)
+    eval_loss = 0
+    eval_correct_num = 0
+    eval_total_num = len(dataloader.dataset)
 
     model.eval()
     with torch.no_grad():
-        for _, batch in enumerate(dataloader):
+        for _, batch in enumerate(tqdm(dataloader)):
             batch = {k: v.to(device) for k, v in batch.items()}
             predict = model(batch)
-            loss += loss_fn(predict, batch['labels'])
-            correct_val += (predict.argmax(dim=1) == batch['labels']).sum().item()
+            loss = loss_fn(predict, batch['labels'])
 
-    current_acc = correct_val / data_len
-    return loss, current_acc
+            eval_loss = loss.clone().cpu().item()
+            eval_correct_num += (predict.argmax(dim=1) == batch['labels']).sum().item()
+
+    eval_acc = eval_correct_num / eval_total_num
+    return eval_loss, eval_acc
 
 
 def train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
     model.to(device)
     loss_fn.to(device)
 
-    best_acc = 0
+    best_val_acc = 0
     best_model = None
 
     for t in range(epochs):
+        train_loss = 0
+        train_correct_num = 0
+        train_total_num = len(train_dataloader.dataset)
+
         model.train()
         for i, batch in enumerate(tqdm(train_dataloader)):
             batch = {k: v.to(device) for k, v in batch.items()}
@@ -270,12 +275,17 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             loss.backward()
             optimizer.step()
 
-        current_loss, current_acc = validate_model(device, validation_dataloader, model, loss_fn)
-        if best_acc < current_acc:
-            best_acc = current_acc
+            train_loss += loss.clone().cpu().item()
+            train_correct_num += (predict.argmax(dim=1) == batch['labels']).sum().item()
+
+        train_acc = train_correct_num / train_total_num
+        val_loss, val_acc = evaluate_model(device, validation_dataloader, model, loss_fn)
+        if best_val_acc < val_acc:
+            best_val_acc = val_acc
             best_model = copy.deepcopy(model)
 
-        print(f"\nValidation loss / current_acc / best_acc : {current_loss}, {current_acc}, {best_acc}")
+        print(f"\nEpoch {t}'th (train loss, train acc), (Val loss, Val acc), (Best Val acc) : "
+              f"({train_loss:.4}, {train_acc:.4}), ({val_loss:.4}, {val_acc:.4}), ({best_val_acc:.4})")
 
     return best_model
 
@@ -286,8 +296,8 @@ def main():
     parser.add_argument('--model_name', default='gpt2', type=str)  # should be gpt2-xxx
     parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=1, type=int)  # TODO dev
-    parser.add_argument('--lr', default=1e-5, type=float)
+    parser.add_argument('--epochs', default=50, type=int)  # TODO dev
+    parser.add_argument('--lr', default=5e-6, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
 
@@ -311,38 +321,42 @@ def main():
     model_name = args.model_name
 
     # Dataset --
-    train_dataset = load_dataset('glue', 'sst2', split="train")
-    validation_dataset = load_dataset('glue', 'sst2', split="validation")
+    train_dataset = load_dataset('glue', 'sst2', split="train[:80%]")
+    validation_dataset = load_dataset('glue', 'sst2', split="train[-20%:]")
+    test_dataset = load_dataset('glue', 'sst2', split="validation")
     dataset_num_labels = 2
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
-    def encode_input(examples):
+    def format_input(examples):
         return tokenizer(examples['sentence'], max_length=seq_max_length, truncation=True, padding='max_length')
 
-    def format_output(examples):
+    def format_target(examples):
         return {'labels': examples['label']}
 
-    train_dataset = train_dataset.map(encode_input, batched=True)
-    train_dataset = train_dataset.map(format_output, batched=True)
-    train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
+    def preprocess_dataset(dataset):
+        dataset = dataset.map(format_input, batched=True)
+        dataset = dataset.map(format_target, batched=True)
+        dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
+        return dataset
 
-    validation_dataset = validation_dataset.map(encode_input, batched=True)
-    validation_dataset = validation_dataset.map(format_output, batched=True)
-    validation_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
+    train_dataset = preprocess_dataset(train_dataset)
+    validation_dataset = preprocess_dataset(validation_dataset)
+    test_dataset = preprocess_dataset(test_dataset)
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size)
 
     model = Gpt2ForClassification(model_name, dataset_num_labels)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
     model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
-    best_loss, best_acc = validate_model(device, validation_dataloader, model, loss_fn)
-    print(f"\nValidation best_loss / best_acc with best model: {best_loss} / {best_acc}")
+    test_loss, test_acc = evaluate_model(device, test_dataloader, model, loss_fn)
+    print(f"\nTest loss / acc with best model: {test_loss} / {test_acc}")
 
 
 if __name__ == '__main__':
