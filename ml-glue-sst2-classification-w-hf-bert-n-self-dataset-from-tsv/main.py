@@ -5,6 +5,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import torch
+from sklearn.metrics import accuracy_score
 from torch import nn
 from torch.optim import Adam
 from torch.utils.data import Dataset, DataLoader
@@ -48,13 +49,13 @@ class GlueSst2Dataset(Dataset):
         }
 
 
-def evaluate_model(device, dataloader, model, loss_fn):
+def evaluate_model(device, dataloader, model, loss_fn, score_fn):
     model.to(device)
     loss_fn.to(device)
 
     eval_loss = 0
-    eval_correct_num = 0
-    eval_total_num = len(dataloader.dataset)
+    eval_pred = []
+    eval_label = []
 
     model.eval()
     with torch.no_grad():
@@ -63,24 +64,27 @@ def evaluate_model(device, dataloader, model, loss_fn):
             predict = model(batch)
             loss = loss_fn(predict, batch['labels'])
 
-            eval_loss = loss.clone().cpu().item()
-            eval_correct_num += (predict.argmax(dim=1) == batch['labels']).sum().item()
+            eval_loss += loss.clone().cpu().item()
+            eval_pred.extend(predict.clone().cpu().tolist())
+            eval_label.extend(batch['labels'].clone().cpu().tolist())
 
-    eval_acc = eval_correct_num / eval_total_num
-    return eval_loss, eval_acc
+    eval_score = score_fn(eval_pred, eval_label)
+    return eval_loss, eval_score
 
 
-def train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
+def train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer, score_fn):
     model.to(device)
     loss_fn.to(device)
 
-    best_val_acc = 0
     best_model = None
+    best_val_score = -10
+    best_val_epoch = -10
+    best_val_loss = -10
 
-    for t in range(epochs):
+    for epoch in range(1, epochs + 1):
         train_loss = 0
-        train_correct_num = 0
-        train_total_num = len(train_dataloader.dataset)
+        train_pred = []
+        train_label = []
 
         model.train()
         for i, batch in enumerate(tqdm(train_dataloader)):
@@ -93,17 +97,20 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             optimizer.step()
 
             train_loss += loss.clone().cpu().item()
-            train_correct_num += (predict.argmax(dim=1) == batch['labels']).sum().item()
+            train_pred.extend(predict.clone().cpu().tolist())
+            train_label.extend(batch['labels'].clone().cpu().tolist())
 
-        train_acc = train_correct_num / train_total_num
-        val_loss, val_acc = evaluate_model(device, validation_dataloader, model, loss_fn)
-        if best_val_acc < val_acc:
-            best_val_acc = val_acc
+        train_score = score_fn(train_pred, train_label)
+        val_loss, val_score = evaluate_model(device, validation_dataloader, model, loss_fn, score_fn)
+        if best_val_score < val_score:
+            best_val_score = val_score
+            best_val_epoch = epoch
+            best_val_loss = val_loss
             best_model = copy.deepcopy(model)
 
-        print(f"\nEpoch {t}'th (train loss, train acc), (Val loss, Val acc), (Best Val acc) : "
-              f"({train_loss:.4}, {train_acc:.4}), ({val_loss:.4}, {val_acc:.4}), ({best_val_acc:.4})")
+        print(f'\nEpoch {epoch} (train loss, train score), (Val loss, Val score): ({train_loss:.4}, {train_score:.4}), ({val_loss:.4}, {val_score:.4})')
 
+    print(f'Val best (epoch, loss, score) : ({best_val_epoch}, {best_val_loss:0.4}, {best_val_score:.4})')
     return best_model
 
 
@@ -113,7 +120,7 @@ def main():
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # should be bert-xxx
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=1, type=int)
+    parser.add_argument('--epochs', default=10, type=int)
     parser.add_argument('--lr', default=1e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
@@ -139,6 +146,7 @@ def main():
 
     # Dataset --
     df_train = pd.read_csv('./glue_sst2_train.tsv', delimiter='\t')
+    df_train = df_train[:50]  # FIXME remove
     df_train, df_val = np.split(df_train, [int(.8 * len(df_train))])
     df_val = df_val.reset_index(drop=True)
 
@@ -160,9 +168,12 @@ def main():
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
-    model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
-    test_loss, test_acc = evaluate_model(device, test_dataloader, model, loss_fn)
-    print(f"\nTest loss / acc with best model: {test_loss} / {test_acc}")
+    def score_fn(pred, label):
+        return accuracy_score(np.argmax(pred, axis=1), label)
+
+    model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer, score_fn)
+    test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn)
+    print(f"\nTest (loss, score) with best model: ({test_loss:.4} / {test_score:.4})")
 
 
 if __name__ == "__main__":

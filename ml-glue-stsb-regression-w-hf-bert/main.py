@@ -2,7 +2,6 @@ import argparse
 import copy
 from datetime import datetime
 
-import numpy as np
 import torch
 from datasets import load_dataset
 from scipy import stats
@@ -30,47 +29,42 @@ class BertForRegression(nn.Module):
         return sigmoid_out.squeeze()
 
 
-def get_score(output, label):
-    score = stats.pearsonr(output, label)[0]
-    return score
-
-
-def evaluate_model(device, dataloader, model, loss_fn):
+def evaluate_model(device, dataloader, model, loss_fn, score_fn):
     model.to(device)
     loss_fn.to(device)
 
     eval_loss = 0
+    eval_pred = []
+    eval_label = []
 
     model.eval()
     with torch.no_grad():
-        pred = []
-        label = []
-
-        for _, batch in enumerate(dataloader):
+        for _, batch in enumerate(tqdm(dataloader)):
             batch = {k: v.to(device) for k, v in batch.items()}
             predict = model(batch)
             loss = loss_fn(predict, batch['labels'])
 
-            eval_loss += loss.item()
-            pred.extend(predict.clone().cpu().tolist())
-            label.extend(batch['labels'].clone().cpu().tolist())
+            eval_loss += loss.clone().cpu().item()
+            eval_pred.extend(predict.clone().cpu().tolist())
+            eval_label.extend(batch['labels'].clone().cpu().tolist())
 
-        eval_score = get_score(np.array(pred), np.array(label))
-
+    eval_score = score_fn(eval_pred, eval_label)
     return eval_loss, eval_score
 
 
-def train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer):
+def train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer, score_fn):
     model.to(device)
     loss_fn.to(device)
 
-    best_val_score = 0
     best_model = None
+    best_val_score = -10
+    best_val_epoch = -10
+    best_val_loss = -10
 
-    for t in range(epochs):
+    for epoch in range(1, epochs + 1):
         train_loss = 0
-        pred = []
-        label = []
+        train_pred = []
+        train_label = []
 
         model.train()
         for i, batch in enumerate(tqdm(train_dataloader)):
@@ -82,20 +76,21 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             loss.backward()
             optimizer.step()
 
-            train_loss += loss.item()
-            pred.extend(predict.clone().cpu().tolist())
-            label.extend(batch['labels'].clone().cpu().tolist())
+            train_loss += loss.clone().cpu().item()
+            train_pred.extend(predict.clone().cpu().tolist())
+            train_label.extend(batch['labels'].clone().cpu().tolist())
 
-        train_score = get_score(np.array(pred), np.array(label))
-
-        val_loss, val_score = evaluate_model(device, validation_dataloader, model, loss_fn)
+        train_score = score_fn(train_pred, train_label)
+        val_loss, val_score = evaluate_model(device, validation_dataloader, model, loss_fn, score_fn)
         if best_val_score < val_score:
             best_val_score = val_score
+            best_val_epoch = epoch
+            best_val_loss = val_loss
             best_model = copy.deepcopy(model)
 
-        print(f"\nEpoch {t}'th (train loss, train acc), (Val loss, Val acc), (Best Val acc) : "
-              f"({train_loss:.4}, {train_score:.4}), ({val_loss:.4}, {val_score:.4}), ({best_val_score:.4})")
+        print(f'\nEpoch {epoch} (train loss, train score), (Val loss, Val score): ({train_loss:.4}, {train_score:.4}), ({val_loss:.4}, {val_score:.4})')
 
+    print(f'Val best (epoch, loss, score) : ({best_val_epoch}, {best_val_loss:0.4}, {best_val_score:.4})')
     return best_model
 
 
@@ -130,9 +125,9 @@ def main():
     model_name = args.model_name
 
     # Dataset --
-    train_dataset = load_dataset('glue', 'stsb', split="train[:80%]")
-    validation_dataset = load_dataset('glue', 'stsb', split="train[-20%:]")
-    test_dataset = load_dataset('glue', 'stsb', split="validation")
+    train_dataset = load_dataset('glue', 'stsb', split="train[:100]")  # FIXME change back to train[:80%]
+    validation_dataset = load_dataset('glue', 'stsb', split="train[-100:]")  # FIXME change back to train[-20%:]
+    test_dataset = load_dataset('glue', 'stsb', split="validation[:100]")  # FIXME change back to validation
     data_labels_num = 1
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
@@ -164,9 +159,12 @@ def main():
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size)
 
-    model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer)
-    test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn)
-    print(f"\nTest loss / acc with best model: {test_loss} / {test_score}")
+    def score_fn(pred, label):
+        return stats.pearsonr(pred, label)[0]
+
+    model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer, score_fn)
+    test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn)
+    print(f"\nTest (loss, score) with best model: ({test_loss:.4} / {test_score:.4})")
 
 
 if __name__ == '__main__':
