@@ -43,15 +43,12 @@ def further_train_model(epochs, device, dataloader, model, loss_fn, optimizer, s
             batch = {k: v.to(device) for k, v in batch.items()}
 
             optimizer.zero_grad()
-
-            # predict = model(**batch)
-            input_ids, attention_mask, token_type_ids = batch['input_ids'], batch['attention_mask'], batch['token_type_ids']  # For Bert-MLM
-            predict = model(input_ids, attention_mask, token_type_ids).logits
-
+            predict = model(**batch)
             loss = torch.tensor(0, dtype=torch.float32).to(device)
             for j, masked_arr in enumerate(batch['masked_arr']):
                 masked_arr_indices = masked_arr.nonzero(as_tuple=True)[0]
                 predicted_token_id = predict[j, masked_arr_indices]
+
                 loss += loss_fn(predicted_token_id, batch['labels'][j, masked_arr_indices])
 
                 train_loss += loss.clone().cpu().item()
@@ -73,7 +70,7 @@ def main():
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--epochs', default=50, type=int)  # TODO dev
-    parser.add_argument('--lr', default=1e-6, type=float)
+    parser.add_argument('--lr', default=3e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
 
