@@ -10,9 +10,7 @@ from torch import nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import set_seed, BertTokenizer, BertConfig, BertModel, BertForMaskedLM
-
-tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+from transformers import set_seed, BertTokenizer, BertConfig, BertModel
 
 
 class BertForFurtherTrainByMLM(nn.Module):
@@ -38,10 +36,6 @@ def further_train_model(epochs, device, dataloader, model, loss_fn, optimizer, s
         model.train()
 
         train_loss = 0
-        train_masked_sentence = []
-        train_target_sentence = []
-        train_mask_predicted = []
-        train_mask_label = []
         train_pred = []
         train_label = []
 
@@ -61,10 +55,6 @@ def further_train_model(epochs, device, dataloader, model, loss_fn, optimizer, s
                 loss += loss_fn(predicted_token_id, batch['labels'][j, masked_arr_indices])
 
                 train_loss += loss.clone().cpu().item()
-                # train_masked_sentence.append(batch['input_ids'][j].clone().cpu().tolist())
-                # train_target_sentence.append(batch['labels'][j].clone().cpu().tolist())
-                # train_mask_predicted.append(np.argmax(predicted_token_id.clone().cpu().tolist(), axis=-1))
-                # train_mask_label.append(batch['labels'][j, masked_arr_indices].clone().cpu().tolist())
                 train_pred.extend(predicted_token_id.clone().cpu().tolist())
                 train_label.extend(batch['labels'][j, masked_arr_indices].clone().cpu().tolist())
 
@@ -72,7 +62,7 @@ def further_train_model(epochs, device, dataloader, model, loss_fn, optimizer, s
             loss.backward()
             optimizer.step()
 
-        train_score = score_fn(train_pred, train_label, train_masked_sentence, train_target_sentence, train_mask_predicted, train_mask_label)
+        train_score = score_fn(train_pred, train_label)
         print(f'\nEpoch {epoch} (train loss, train score): ({train_loss:.4}, {train_score:.4})')
 
 
@@ -111,7 +101,7 @@ def main():
     eli5 = eli5.flatten()
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
-    # tokenizer = BertTokenizer.from_pretrained(model_name)
+    tokenizer = BertTokenizer.from_pretrained(model_name)
 
     def mask_random_token(element):
         if element == tokenizer.cls_token_id or element == tokenizer.sep_token_id or element == tokenizer.pad_token_id:
@@ -135,22 +125,13 @@ def main():
 
     eli5 = eli5.map(format_input_target)
     eli5.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'masked_arr', 'labels'])
-    # model = BertForFurtherTrainByMLM(model_name)
-    model = BertForMaskedLM.from_pretrained("bert-base-uncased")
+    model = BertForFurtherTrainByMLM(model_name)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
     eli5_dataloader = DataLoader(eli5, batch_size=batch_size)
 
-    def score_fn(pred, label, masked_sentence, target_sentence, mask_predicted, mask_label):
-        # for m, t, p, l in zip(masked_sentence, target_sentence, mask_predicted, mask_label):
-        #     print("===============================")
-        #     print(f"masked_sentence: {tokenizer.convert_ids_to_tokens(m)}")
-        #     print(f"target_sentence: {tokenizer.convert_ids_to_tokens(t)}")
-        #     print(f"mask_predicted: {tokenizer.convert_ids_to_tokens(p)}")
-        #     print(f"mask_label: {tokenizer.convert_ids_to_tokens(l)}")
-        #     print("===============================")
-
+    def score_fn(pred, label):
         return accuracy_score(np.argmax(pred, axis=-1), np.array(label))
 
     further_train_model(epochs, device, eli5_dataloader, model, loss_fn, optimizer, score_fn)
