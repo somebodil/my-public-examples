@@ -2,31 +2,51 @@ import argparse
 import copy
 from datetime import datetime
 
+import numpy as np
+import pandas as pd
 import torch
-from datasets import load_dataset
-from scipy import stats
+from sklearn.metrics import accuracy_score
 from torch import nn
 from torch.optim import Adam
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-from transformers import BertModel, BertTokenizer, BertConfig
-from transformers import set_seed
+from transformers import BertModel, set_seed, BertTokenizer, BertConfig
 
 
-class BertForRegression(nn.Module):
+class BertForClassification(nn.Module):
     def __init__(self, bert_model_name, num_labels):
-        super(BertForRegression, self).__init__()
+        super(BertForClassification, self).__init__()
 
         self.hidden_size = BertConfig.from_pretrained(bert_model_name).hidden_size
         self.bert = BertModel.from_pretrained(bert_model_name)
-        self.linear = nn.Linear(in_features=self.hidden_size, out_features=num_labels)
-        self.sigmoid = nn.Sigmoid()
+        self.linear = nn.Linear(in_features=self.hidden_size,
+                                out_features=num_labels)
 
-    def forward(self, batch):
-        _, bert_out = self.bert(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], token_type_ids=batch['token_type_ids'], return_dict=False)
+    def forward(self, input_ids, attention_mask, **kwargs):
+        _, bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
         linear_out = self.linear(bert_out)
-        sigmoid_out = self.sigmoid(linear_out) * 5
-        return sigmoid_out.squeeze()
+        return linear_out
+
+
+class GlueSst2Dataset(Dataset):
+
+    def __init__(self, data_frame, tokenizer, max_length):
+        self.len = len(data_frame['label'])
+        self.data_frame = data_frame
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, idx):
+        encodings = self.tokenizer(self.data_frame['sentence'][idx], padding='max_length', max_length=self.max_length, truncation=True, return_tensors="pt")
+
+        return {
+            "labels": self.data_frame['label'][idx],
+            "input_ids": encodings['input_ids'].squeeze(0),
+            "attention_mask": encodings['attention_mask'].squeeze(0)
+        }
 
 
 def evaluate_model(device, dataloader, model, loss_fn, score_fn):
@@ -41,7 +61,7 @@ def evaluate_model(device, dataloader, model, loss_fn, score_fn):
     with torch.no_grad():
         for _, batch in enumerate(tqdm(dataloader)):
             batch = {k: v.to(device) for k, v in batch.items()}
-            predict = model(batch)
+            predict = model(**batch)
             loss = loss_fn(predict, batch['labels'])
 
             eval_loss += loss.clone().cpu().item()
@@ -71,7 +91,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             batch = {k: v.to(device) for k, v in batch.items()}
 
             optimizer.zero_grad()
-            predict = model(batch)
+            predict = model(**batch)
             loss = loss_fn(predict, batch['labels'])
             loss.backward()
             optimizer.step()
@@ -97,10 +117,10 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
 def main():
     # Parser --
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', default='bert-base-cased', type=str)
+    parser.add_argument('--model_name', default='bert-base-cased', type=str)  # should be bert-xxx
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=50, type=int)  # TODO dev
+    parser.add_argument('--epochs', default=10, type=int)
     parser.add_argument('--lr', default=1e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
@@ -125,47 +145,36 @@ def main():
     model_name = args.model_name
 
     # Dataset --
-    train_dataset = load_dataset('glue', 'stsb', split="train[:100]")  # FIXME change back to train[:80%]
-    validation_dataset = load_dataset('glue', 'stsb', split="train[-100:]")  # FIXME change back to train[-20%:]
-    test_dataset = load_dataset('glue', 'stsb', split="validation[:100]")  # FIXME change back to validation
-    data_labels_num = 1
+    df_train = pd.read_csv('./glue_sst2_train.tsv', delimiter='\t')
+    df_train = df_train[:50]  # FIXME remove
+    df_train, df_val = np.split(df_train, [int(.8 * len(df_train))])
+    df_val = df_val.reset_index(drop=True)
+
+    df_test = pd.read_csv('./glue_sst2_dev.tsv', delimiter='\t')
+    dataset_num_labels = 2
 
     # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)
 
-    def format_input(examples):
-        encoded = tokenizer(examples['sentence1'], examples['sentence2'], max_length=seq_max_length, truncation=True, padding='max_length')
-        return encoded
-
-    def format_target(examples):
-        changed = {'labels': examples['label']}
-        return changed
-
-    def preprocess_dataset(dataset):
-        dataset = dataset.map(format_input, batched=True)
-        dataset = dataset.map(format_target, batched=True)
-        dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'token_type_ids', 'labels'])
-        return dataset
-
-    train_dataset = preprocess_dataset(train_dataset)
-    validation_dataset = preprocess_dataset(validation_dataset)
-    test_dataset = preprocess_dataset(test_dataset)
-
-    model = BertForRegression(model_name, data_labels_num)
-    loss_fn = nn.MSELoss()
-    optimizer = Adam(model.parameters(), lr=learning_rate)
+    train_dataset = GlueSst2Dataset(df_train, tokenizer, seq_max_length)
+    validation_dataset = GlueSst2Dataset(df_val, tokenizer, seq_max_length)
+    test_dataset = GlueSst2Dataset(df_test, tokenizer, seq_max_length)
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size)
 
+    model = BertForClassification(model_name, dataset_num_labels)
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = Adam(model.parameters(), lr=learning_rate)
+
     def score_fn(pred, label):
-        return stats.pearsonr(pred, label)[0]
+        return accuracy_score(np.argmax(pred, axis=1), label)
 
     model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer, score_fn)
     test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn)
     print(f"\nTest (loss, score) with best model: ({test_loss:.4} / {test_score:.4})")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

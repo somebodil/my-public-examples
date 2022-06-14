@@ -223,11 +223,11 @@ class Gpt2ForClassification(nn.Module):
         self.gpt2 = CustomGPT2Model.from_pretrained(gpt2_model_name)
         self.linear = nn.Linear(in_features=self.hidden_size, out_features=num_labels)
 
-    def forward(self, batch):
-        gpt2_out, _ = self.gpt2(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], return_dict=False)
+    def forward(self, input_ids, attention_mask, **kwargs):
+        gpt2_out, _ = self.gpt2(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)
 
         batch_size = gpt2_out.shape[0]
-        gpt2_out_last_indices = batch['attention_mask'].squeeze().sum(dim=-1) - 1
+        gpt2_out_last_indices = attention_mask.sum(dim=-1) - 1
         sentence_out = gpt2_out[[i for i in range(batch_size)], gpt2_out_last_indices]
 
         return self.linear(sentence_out)
@@ -245,7 +245,7 @@ def evaluate_model(device, dataloader, model, loss_fn, score_fn):
     with torch.no_grad():
         for _, batch in enumerate(tqdm(dataloader)):
             batch = {k: v.to(device) for k, v in batch.items()}
-            predict = model(batch)
+            predict = model(**batch)
             loss = loss_fn(predict, batch['labels'])
 
             eval_loss += loss.clone().cpu().item()
@@ -275,7 +275,7 @@ def train_model(epochs, device, train_dataloader, validation_dataloader, model, 
             batch = {k: v.to(device) for k, v in batch.items()}
 
             optimizer.zero_grad()
-            predict = model(batch)
+            predict = model(**batch)
             loss = loss_fn(predict, batch['labels'])
             loss.backward()
             optimizer.step()
