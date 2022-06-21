@@ -124,13 +124,7 @@ def main():
     seq_max_length = args.seq_max_length
     model_name = args.model_name
 
-    # Dataset --
-    train_dataset = load_dataset('glue', 'stsb', split="train[:100]")  # FIXME change back to train[:80%]
-    validation_dataset = load_dataset('glue', 'stsb', split="train[-100:]")  # FIXME change back to train[-20%:]
-    test_dataset = load_dataset('glue', 'stsb', split="validation[:100]")  # FIXME change back to validation
-    data_labels_num = 1
-
-    # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
+    # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)
 
     def format_input(examples):
@@ -146,6 +140,11 @@ def main():
         dataset = dataset.map(format_target, batched=True)
         dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'token_type_ids', 'labels'])
         return dataset
+
+    train_dataset = load_dataset('glue', 'stsb', split="train[:100]")  # FIXME change back to train[:80%]
+    validation_dataset = load_dataset('glue', 'stsb', split="train[-100:]")  # FIXME change back to train[-20%:]
+    test_dataset = load_dataset('glue', 'stsb', split="validation[:100]")  # FIXME change back to validation
+    data_labels_num = 1
 
     train_dataset = preprocess_dataset(train_dataset)
     validation_dataset = preprocess_dataset(validation_dataset)

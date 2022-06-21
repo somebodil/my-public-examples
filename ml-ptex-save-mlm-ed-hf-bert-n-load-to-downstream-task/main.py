@@ -53,7 +53,7 @@ def load_model_state(path):
     return torch.load(path, map_location='cpu')
 
 
-def further_train_model(epochs, device, dataloader, model, loss_fn, optimizer, score_fn):
+def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_fn):
     model.to(device)
     loss_fn.to(device)
 
@@ -100,11 +100,7 @@ def further_train_main(args):
     seq_max_length = args.seq_max_length
     model_name = args.model_name
 
-    # Dataset --
-    eli5 = load_dataset("eli5", split="train_asks[:100]")
-    eli5 = eli5.flatten()
-
-    # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
+    # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)
 
     def mask_random_token(element):
@@ -127,6 +123,8 @@ def further_train_main(args):
         encodings["masked_arr"] = encodings["input_ids"] != encodings['labels']
         return encodings
 
+    eli5 = load_dataset("eli5", split="train_asks[:100]")
+    eli5 = eli5.flatten()
     eli5 = eli5.map(format_input_target)
     eli5.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'masked_arr', 'labels'])
     model = BertForFurtherTrainByMLM(model_name)
@@ -138,7 +136,7 @@ def further_train_main(args):
     def score_fn(pred, label):
         return accuracy_score(np.argmax(pred, axis=-1), np.array(label))
 
-    further_train_model(epochs, device, eli5_dataloader, model, loss_fn, optimizer, score_fn)
+    pretrain_model(epochs, device, eli5_dataloader, model, loss_fn, optimizer, score_fn)
     save_model_state(model.state_dict(), "checkpoint/bert_state.pt")
 
 

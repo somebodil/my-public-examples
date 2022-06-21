@@ -144,7 +144,9 @@ def main():
     seq_max_length = args.seq_max_length
     model_name = args.model_name
 
-    # Dataset --
+    # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
+    tokenizer = BertTokenizer.from_pretrained(model_name)
+
     df_train = pd.read_csv('./glue_sst2_train.tsv', delimiter='\t')
     df_train = df_train[:50]  # FIXME remove
     df_train, df_val = np.split(df_train, [int(.8 * len(df_train))])
@@ -152,9 +154,6 @@ def main():
 
     df_test = pd.read_csv('./glue_sst2_dev.tsv', delimiter='\t')
     dataset_num_labels = 2
-
-    # Prepare tokenizer, dataloader, model, loss function, optimizer, etc --
-    tokenizer = BertTokenizer.from_pretrained(model_name)
 
     train_dataset = GlueSst2Dataset(df_train, tokenizer, seq_max_length)
     validation_dataset = GlueSst2Dataset(df_val, tokenizer, seq_max_length)
