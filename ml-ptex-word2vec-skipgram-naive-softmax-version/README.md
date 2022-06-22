@@ -1,0 +1,1 @@
+Referred https://muhark.github.io/python/ml/nlp/2021/10/21/word2vec-from-scratch.html
