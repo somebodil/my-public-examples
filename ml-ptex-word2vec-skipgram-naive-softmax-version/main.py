@@ -13,6 +13,7 @@ from torch import nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+from transformers import set_seed
 
 
 class Word2VecDataset(Dataset):
@@ -67,16 +68,11 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_
 def main():
     # Parser --
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
     parser.add_argument('--batch_size', default=10240, type=int)
-    parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--epochs', default=90, type=int)
-    parser.add_argument('--lr', default=1e-4, type=float)
+    parser.add_argument('--lr', default=1e-3, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
-
-    # Device --
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -86,7 +82,11 @@ def main():
     for a in args.__dict__:
         print(f'{a}: {args.__dict__[a]}')
 
+    # Device --
+    device = args.device
+
     # Hyper parameter --
+    set_seed(args.seed)
     epochs = args.epochs
     batch_size = args.batch_size
     learning_rate = args.lr
@@ -156,7 +156,7 @@ def main():
             out = [(i, id2tok[i], dists[i]) for i in ind]
             return out
 
-        word2vec_param = m.expand.weight.cpu().detach().numpy()
+        word2vec_param = m.expand.weight.cpu().detach().numpy()  # using latter matrix
         tokens = ['good', 'father', 'school', 'hate']
 
         distance_matrix = get_distance_matrix(word2vec_param, 'cosine')
