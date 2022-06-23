@@ -96,10 +96,11 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _):
             optimizer.step()
 
             train_loss += loss.item()
+
             if i % 5000 == 0:
                 print(f'\nTrain loss for 5000 iteration: ({train_loss:.4})')
-                train_loss = 0
                 save_model_state(model.state_dict(), "checkpoint/_state.pt")
+                train_loss = 0
 
 
 def main():
