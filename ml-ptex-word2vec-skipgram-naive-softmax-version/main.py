@@ -68,11 +68,12 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_
 def main():
     # Parser --
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', default=10240, type=int)
-    parser.add_argument('--epochs', default=90, type=int)
+    parser.add_argument('--batch_size', default=50000, type=int)
+    parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--lr', default=1e-3, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
+    parser.add_argument('--window_size', default=6, type=int)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -90,8 +91,8 @@ def main():
     epochs = args.epochs
     batch_size = args.batch_size
     learning_rate = args.lr
+    window_size = args.window_size
     embed_size = 200
-    window_size = 4
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     dataset = datasets.load_dataset('tweets_hate_speech_detection', split="train")
