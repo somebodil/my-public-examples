@@ -106,7 +106,7 @@ def main():
     # Parser --
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', default='google/mt5-large', type=str)  # should be t5 base
-    parser.add_argument('--batch_size', default=4, type=int)
+    parser.add_argument('--batch_size', default=4, type=int)  # TODO dev
     parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--epochs', default=1, type=int)  # TODO dev
     parser.add_argument('--lr', default=1e-4, type=float)
