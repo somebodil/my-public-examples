@@ -53,7 +53,7 @@ def load_model_state(path):
     return torch.load(path, map_location='cpu')
 
 
-def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_fn):
+def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_fn, model_state_name):
     model.to(device)
     loss_fn.to(device)
 
@@ -84,8 +84,15 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_
             loss.backward()
             optimizer.step()
 
-        train_score = score_fn(train_pred, train_label)
-        print(f'\nEpoch {epoch} (train loss, train score): ({train_loss:.4}, {train_score:.4})')
+            if i % 1000 == 0 or i == len(dataloader) - 1:
+                train_score = score_fn(train_pred, train_label)
+                save_model_state(model.state_dict(), f"checkpoint/{model_state_name}")
+
+                print(f'\n{i}th iteration (train loss, train score): ({train_loss:.4}, {train_score:.4})')
+
+                train_loss = 0
+                train_pred = []
+                train_label = []
 
 
 def further_train_main(args):
@@ -99,6 +106,7 @@ def further_train_main(args):
     epochs = args.epochs
     seq_max_length = args.seq_max_length
     model_name = args.model_name
+    model_state_name = args.model_state_name
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)
@@ -123,7 +131,7 @@ def further_train_main(args):
         encodings["masked_arr"] = encodings["input_ids"] != encodings['labels']
         return encodings
 
-    eli5 = load_dataset("eli5", split="train_asks[:100]")
+    eli5 = load_dataset("eli5", split="train_asks[:100]")  # FIXME revert
     eli5 = eli5.flatten()
     eli5 = eli5.map(format_input_target)
     eli5.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'masked_arr', 'labels'])
@@ -136,8 +144,7 @@ def further_train_main(args):
     def score_fn(pred, label):
         return accuracy_score(np.argmax(pred, axis=-1), np.array(label))
 
-    pretrain_model(epochs, device, eli5_dataloader, model, loss_fn, optimizer, score_fn)
-    save_model_state(model.state_dict(), "checkpoint/bert_state.pt")
+    pretrain_model(epochs, device, eli5_dataloader, model, loss_fn, optimizer, score_fn, model_state_name)
 
 
 def downstream_task_main(args):
@@ -147,7 +154,7 @@ def downstream_task_main(args):
     """
 
     model_name = args.model_name
-    model_state = load_model_state("checkpoint/bert_state.pt")
+    model_state = load_model_state(f"checkpoint/{args.model_state_name}")
     model = BertForDownstreamTask(model_name, 1)
     missing_keys, unexpected_keys = model.load_state_dict(model_state, strict=False)
     print(missing_keys)  # 모델 입장에서 model_state 에 존재할거라 기대했지만 없었던 키 - ['linear.weight', 'linear.bias']
@@ -160,10 +167,11 @@ def main():
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=1, type=int)
+    parser.add_argument('--epochs', default=5, type=int)
     parser.add_argument('--lr', default=3e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
+    parser.add_argument('--model_state_name', default='model_state.pt', type=str)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')

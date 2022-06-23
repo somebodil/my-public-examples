@@ -79,7 +79,7 @@ def save_model_state(model_state, path):
     torch.save(model_state, path)
 
 
-def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _):
+def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _, model_state_name):
     model.to(device)
     loss_fn.to(device)
 
@@ -97,9 +97,9 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _):
 
             train_loss += loss.item()
 
-            if i % 5000 == 0:
-                print(f'\nTrain loss for 5000 iteration: ({train_loss:.4})')
-                save_model_state(model.state_dict(), "checkpoint/_state.pt")
+            if i % 1000 == 0 or i == len(dataloader) - 1:
+                save_model_state(model.state_dict(), f"checkpoint/{model_state_name}")
+                print(f'\n{i}th iteration (train loss): ({train_loss:.4})')
                 train_loss = 0
 
 
@@ -115,6 +115,7 @@ def main():
     parser.add_argument('--seed', default=4885, type=int)
     parser.add_argument('--temperature', default=0.05, type=float)
     parser.add_argument('--dataset', default='kowikitext_20200920.train', type=str)
+    parser.add_argument('--model_state_name', default='model_state.pt', type=str)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -136,6 +137,7 @@ def main():
     learning_rate = args.lr
     temperature = args.temperature
     dataset = args.dataset
+    model_state_name = args.model_state_name
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     with open(f"dataset/{dataset}", encoding='utf8') as f:
@@ -154,7 +156,7 @@ def main():
     optimizer = Adam(model.parameters(), lr=learning_rate)
     loss_fn = nn.CrossEntropyLoss()
 
-    pretrain_model(epochs, device, train_dataloader, model, loss_fn, optimizer, None)
+    pretrain_model(epochs, device, train_dataloader, model, loss_fn, optimizer, None, model_state_name)
 
 
 if __name__ == "__main__":
