@@ -106,13 +106,14 @@ def main():
     # Parser --
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', default='google/mt5-large', type=str)  # should be t5 base
-    parser.add_argument('--batch_size', default=4, type=int)  # TODO dev
+    parser.add_argument('--batch_size', default=12, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=1, type=int)  # TODO dev
+    parser.add_argument('--epochs', default=1, type=int)
     parser.add_argument('--lr', default=1e-4, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
     parser.add_argument('--temperature', default=0.05, type=float)
+    parser.add_argument('--dataset', default='kowikitext_20200920.train', type=str)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -133,9 +134,10 @@ def main():
     epochs = args.epochs
     learning_rate = args.lr
     temperature = args.temperature
+    dataset = args.dataset
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
-    with open("dataset/kowikitext_20200920.train", encoding='utf8') as f:
+    with open(f"dataset/{dataset}", encoding='utf8') as f:
         lines = []
         for line in f:
             line = line.strip()

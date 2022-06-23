@@ -100,7 +100,7 @@ def main():
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=50, type=int)  # TODO dev
+    parser.add_argument('--epochs', default=50, type=int)
     parser.add_argument('--lr', default=1e-5, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
