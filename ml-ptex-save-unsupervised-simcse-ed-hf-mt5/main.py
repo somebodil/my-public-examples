@@ -14,7 +14,7 @@ from transformers import set_seed, T5Tokenizer, MT5Config, MT5EncoderModel
 class SentenceT5EncoderModel(nn.Module):
     def __init__(self, model_name):  # model_name should be mt5 related ...
         super(SentenceT5EncoderModel, self).__init__()
-        self.hidden_size = MT5Config.from_pretrained(model_name).hidden_size
+        self.hidden_size = MT5Config.from_pretrained(model_name).hidden_size  # We use dropout_rate default config 0.1, as paper says
         self.mt5 = MT5EncoderModel.from_pretrained(model_name)
 
     def forward(self, input_ids, attention_mask, **kwargs):
