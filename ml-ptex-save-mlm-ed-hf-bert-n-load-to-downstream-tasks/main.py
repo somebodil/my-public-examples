@@ -18,24 +18,10 @@ class BertForFurtherTrainByMLM(nn.Module):
     def __init__(self, model_name):
         super(BertForFurtherTrainByMLM, self).__init__()
 
-        config = BertConfig.from_pretrained(model_name)
-        hidden_size, vocab_size = config.hidden_size, config.vocab_size
+        self.config = BertConfig.from_pretrained(model_name)
+        hidden_size, vocab_size = self.config.hidden_size, self.config.vocab_size
         self.bert = BertModel.from_pretrained(model_name)
-        self.linear_will_not_use_later = nn.Linear(in_features=hidden_size, out_features=vocab_size)  # Should add such as suffix "_will_not_use_later" for sake of downstream-task model var naming
-
-    def forward(self, input_ids, attention_mask, token_type_ids, **kwargs):
-        bert_out, _ = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, return_dict=False)
-        linear_out = self.linear_will_not_use_later(bert_out)
-        return linear_out
-
-
-class BertForDownstreamTask(nn.Module):
-    def __init__(self, model_name, num_labels):
-        super(BertForDownstreamTask, self).__init__()
-
-        hidden_size = BertConfig.from_pretrained(model_name).hidden_size
-        self.bert = BertModel.from_pretrained(model_name)
-        self.linear = nn.Linear(in_features=hidden_size, out_features=num_labels)
+        self.linear = nn.Linear(in_features=hidden_size, out_features=vocab_size)  # Should add such as suffix "_will_not_use_later" for sake of downstream-task model var naming
 
     def forward(self, input_ids, attention_mask, token_type_ids, **kwargs):
         bert_out, _ = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, return_dict=False)
@@ -43,17 +29,48 @@ class BertForDownstreamTask(nn.Module):
         return linear_out
 
 
-def save_model_state(model_state, path):
+class BertForDownstreamTask(nn.Module):
+    def __init__(self, model_name, num_labels, state_dict=None, config=None):
+        super(BertForDownstreamTask, self).__init__()
+
+        if model_name is None:
+            if state_dict is None or config is None:
+                raise ValueError("If model_name is None, state_dict and config must be specified.")
+
+            self.config = BertConfig.from_dict(config)
+            self.bert = BertModel(config=self.config)
+            self.bert.load_state_dict(state_dict)
+
+        else:
+            if state_dict is None or config is None:
+                raise ValueError("If model_name is not None, state_dict and config must be None.")
+
+            self.config = BertConfig.from_pretrained(model_name)
+            self.bert = BertModel.from_pretrained(model_name)
+
+        self.linear = nn.Linear(in_features=self.config.hidden_size, out_features=num_labels)
+
+    def forward(self, input_ids, attention_mask, token_type_ids, **kwargs):
+        bert_out, _ = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, return_dict=False)
+        linear_out = self.linear(bert_out)
+        return linear_out
+
+
+def save_model_config(model_state_dict, model_config_dict, path):
     dirname = os.path.dirname(path)
     os.makedirs(dirname, exist_ok=True)
-    torch.save(model_state, path)
+    torch.save({
+        'model_state_dict': model_state_dict,
+        'model_config_dict': model_config_dict,
+    }, path)
 
 
-def load_model_state(path):
-    return torch.load(path, map_location='cpu')
+def load_model_config(path):
+    config = torch.load(path, map_location='cpu')
+    return config['model_state_dict'], config['model_config_dict']
 
 
-def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_fn, model_state_name):
+def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_fn, model_path):
     model.to(device)
     loss_fn.to(device)
 
@@ -86,7 +103,7 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_
 
             if i % 1000 == 0 or i == len(dataloader) - 1:
                 train_score = score_fn(train_pred, train_label)
-                save_model_state(model.state_dict(), f"checkpoint/{model_state_name}")
+                save_model_config(model.bert.state_dict(), model.config.to_dict(), model_path)
 
                 print(f'\n{i}th iteration (train loss, train score): ({train_loss:.4}, {train_score:.4})')
 
@@ -95,7 +112,26 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_
                 train_label = []
 
 
-def further_train_main(args):
+def pretrain_main():
+    # Parser --
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
+    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--seq_max_length', default=128, type=int)
+    parser.add_argument('--epochs', default=1, type=int)
+    parser.add_argument('--lr', default=3e-5, type=float)
+    parser.add_argument('--gpu', default=0, type=int)
+    parser.add_argument('--seed', default=4885, type=int)
+    parser.add_argument('--model_state_name', default='model_state.pt', type=str)
+
+    args = parser.parse_known_args()[0]
+    setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
+    setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
+
+    print('[List of arguments]')
+    for a in args.__dict__:
+        print(f'{a}: {args.__dict__[a]}')
+
     # Device --
     device = args.device
 
@@ -144,46 +180,24 @@ def further_train_main(args):
     def score_fn(pred, label):
         return accuracy_score(np.argmax(pred, axis=-1), np.array(label))
 
-    pretrain_model(epochs, device, eli5_dataloader, model, loss_fn, optimizer, score_fn, model_state_name)
+    model_path = f'checkpoint/{model_state_name}'
+    pretrain_model(epochs, device, eli5_dataloader, model, loss_fn, optimizer, score_fn, model_path)
+    return model_path
 
 
-def downstream_task_main(args):
-    """
-    Only show loading state for this example.
-    See other examples that actually does downstream task.
-    """
+def example_down_stream_task_main(model_save_path):
+    model_state, config = load_model_config(model_save_path)
+    model = BertForDownstreamTask(None, 1, model_state, config)
 
-    model_name = args.model_name
-    model_state = load_model_state(f"checkpoint/{args.model_state_name}")
-    model = BertForDownstreamTask(model_name, 1)
+    model.config.from_dict(config)
     missing_keys, unexpected_keys = model.load_state_dict(model_state, strict=False)
-    print(missing_keys)  # 모델 입장에서 model_state 에 존재할거라 기대했지만 없었던 키 - ['linear.weight', 'linear.bias']
-    print(unexpected_keys)  # 모델 입장에서 없어도 되는데 존재하는 키 - ['linear_will_not_use_later.weight', 'linear_will_not_use_later.bias']
+    print(missing_keys)  # Model expected but state does not have these keys: ['linear.weight', 'linear.bias']
+    print(unexpected_keys)  # Model does not need these keys: ['linear_will_not_use_later.weight', 'linear_will_not_use_later.bias']
 
-
-def main():
-    # Parser --
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
-    parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=5, type=int)
-    parser.add_argument('--lr', default=3e-5, type=float)
-    parser.add_argument('--gpu', default=0, type=int)
-    parser.add_argument('--seed', default=4885, type=int)
-    parser.add_argument('--model_state_name', default='model_state.pt', type=str)
-
-    args = parser.parse_known_args()[0]
-    setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
-    setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
-
-    print('[List of arguments]')
-    for a in args.__dict__:
-        print(f'{a}: {args.__dict__[a]}')
-
-    further_train_main(args)
-    downstream_task_main(args)
+    # Need code for downstream task, but will not write here.
+    # See other examples.
 
 
 if __name__ == "__main__":
-    main()
+    model_save_path = pretrain_main()
+    example_down_stream_task_main(model_save_path)
