@@ -30,19 +30,19 @@ class BertForFurtherTrainByMLM(nn.Module):
 
 
 class BertForDownstreamTask(nn.Module):
-    def __init__(self, model_name, num_labels, state_dict=None, config=None):
+    def __init__(self, model_name, num_labels, state_dict=None, config_dict=None):
         super(BertForDownstreamTask, self).__init__()
 
         if model_name is None:
-            if state_dict is None or config is None:
+            if state_dict is None or config_dict is None:
                 raise ValueError("If model_name is None, state_dict and config must be specified.")
 
-            self.config = BertConfig.from_dict(config)
+            self.config = BertConfig.from_dict(config_dict)
             self.bert = BertModel(config=self.config)
             self.bert.load_state_dict(state_dict)
 
-        else:
-            if state_dict is None or config is None:
+        else:  # This 'else' block of code is not used in this project
+            if state_dict is not None or config_dict is not None:
                 raise ValueError("If model_name is not None, state_dict and config must be None.")
 
             self.config = BertConfig.from_pretrained(model_name)
@@ -56,21 +56,22 @@ class BertForDownstreamTask(nn.Module):
         return linear_out
 
 
-def save_model_config(model_state_dict, model_config_dict, path):
+def load_model_config(path):
+    config = torch.load(path, map_location='cpu')
+    return config['model_name'], config['model_state_dict'], config['model_config_dict']
+
+
+def save_model_config(path, model_name, model_state_dict, model_config_dict):
     dirname = os.path.dirname(path)
     os.makedirs(dirname, exist_ok=True)
     torch.save({
+        'model_name': model_name,
         'model_state_dict': model_state_dict,
-        'model_config_dict': model_config_dict,
+        'model_config_dict': model_config_dict
     }, path)
 
 
-def load_model_config(path):
-    config = torch.load(path, map_location='cpu')
-    return config['model_state_dict'], config['model_config_dict']
-
-
-def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_fn, model_path):
+def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_fn, model_save_fn):
     model.to(device)
     loss_fn.to(device)
 
@@ -103,7 +104,7 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, score_
 
             if i % 1000 == 0 or i == len(dataloader) - 1:
                 train_score = score_fn(train_pred, train_label)
-                save_model_config(model.bert.state_dict(), model.config.to_dict(), model_path)
+                model_save_fn(model)
 
                 print(f'\n{i}th iteration (train loss, train score): ({train_loss:.4}, {train_score:.4})')
 
@@ -143,6 +144,7 @@ def pretrain_main():
     seq_max_length = args.seq_max_length
     model_name = args.model_name
     model_state_name = args.model_state_name
+    model_path = f'checkpoint/{model_state_name}'
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)
@@ -180,19 +182,18 @@ def pretrain_main():
     def score_fn(pred, label):
         return accuracy_score(np.argmax(pred, axis=-1), np.array(label))
 
-    model_path = f'checkpoint/{model_state_name}'
-    pretrain_model(epochs, device, eli5_dataloader, model, loss_fn, optimizer, score_fn, model_path)
+    def model_save_fn(pretrained_model):
+        save_model_config(model_path, model_name, pretrained_model.bert.state_dict(), pretrained_model.config.to_dict())
+
+    pretrain_model(epochs, device, eli5_dataloader, model, loss_fn, optimizer, score_fn, model_save_fn)
     return model_path
 
 
-def example_down_stream_task_main(model_save_path):
-    model_state, config = load_model_config(model_save_path)
-    model = BertForDownstreamTask(None, 1, model_state, config)
-
-    model.config.from_dict(config)
-    missing_keys, unexpected_keys = model.load_state_dict(model_state, strict=False)
-    print(missing_keys)  # Model expected but state does not have these keys: ['linear.weight', 'linear.bias']
-    print(unexpected_keys)  # Model does not need these keys: ['linear_will_not_use_later.weight', 'linear_will_not_use_later.bias']
+def use_pretrained_model_in_down_stream_task_main(model_save_path):
+    model_name, model_state_dict, model_config_dict = load_model_config(model_save_path)
+    model = BertForDownstreamTask(None, 1, model_state_dict, model_config_dict)
+    print(model_name)  # Use this to load tokenizer and parse dataset
+    print(model)  # Use this for downstream task
 
     # Need code for downstream task, but will not write here.
     # See other examples.
@@ -200,4 +201,4 @@ def example_down_stream_task_main(model_save_path):
 
 if __name__ == "__main__":
     model_save_path = pretrain_main()
-    example_down_stream_task_main(model_save_path)
+    use_pretrained_model_in_down_stream_task_main(model_save_path)

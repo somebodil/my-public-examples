@@ -15,19 +15,19 @@ from transformers import set_seed, T5Tokenizer, MT5Config, MT5EncoderModel
 
 
 class Mt5ForRegression(nn.Module):
-    def __init__(self, model_name, num_labels, state_dict=None, config=None):
+    def __init__(self, model_name, num_labels, state_dict=None, config_dict=None):
         super(Mt5ForRegression, self).__init__()
 
         if model_name is None:
-            if state_dict is None or config is None:
+            if state_dict is None or config_dict is None:
                 raise ValueError("If model_name is None, state_dict and config must be specified.")
 
-            self.config = MT5Config.from_dict(config)
+            self.config = MT5Config.from_dict(config_dict)
             self.mt5 = MT5EncoderModel(config=self.config)
             self.mt5.load_state_dict(state_dict)
 
         else:
-            if state_dict is not None or config is not None:
+            if state_dict is not None or config_dict is not None:
                 raise ValueError("If model_name is not None, state_dict and config must be None.")
 
             self.config = MT5Config.from_pretrained(model_name)
@@ -100,19 +100,20 @@ class SimCSEDataset(Dataset):
 
 def load_model_config(path):
     config = torch.load(path, map_location='cpu')
-    return config['model_state_dict'], config['model_config_dict']
+    return config['model_name'], config['model_state_dict'], config['model_config_dict']
 
 
-def save_model_config(model_state_dict, model_config_dict, path):
+def save_model_config(path, model_name, model_state_dict, model_config_dict):
     dirname = os.path.dirname(path)
     os.makedirs(dirname, exist_ok=True)
     torch.save({
+        'model_name': model_name,
         'model_state_dict': model_state_dict,
-        'model_config_dict': model_config_dict,
+        'model_config_dict': model_config_dict
     }, path)
 
 
-def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _, model_path):
+def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _, model_save_fn):
     model.to(device)
     loss_fn.to(device)
 
@@ -131,7 +132,7 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _, mod
             train_loss += loss.item()
 
             if i % 1000 == 0 or i == len(dataloader) - 1:
-                save_model_config(model.mt5.state_dict(), model.config.to_dict(), model_path)
+                model_save_fn(model)
                 print(f'\n{i}th iteration (train loss): ({train_loss:.4})')
                 train_loss = 0
 
@@ -213,8 +214,8 @@ def main():
     parser.add_argument('--seed', default=4885, type=int)
     parser.add_argument('--temperature', default=0.05, type=float)
     parser.add_argument('--pretrain_dataset', default='kowikitext_20200920.train', type=str)
-    parser.add_argument('--model_state_name', default='model_state.pt', type=str)  # model_state.pt or ''
-    parser.add_argument('--task', default='klue_sts', type=str)  # '' or klue_sts, ...
+    parser.add_argument('--model_state_name', default='model_state.pt', type=str)  # for downstream tasks, if model_state.pt exist, model_name will be ignored
+    parser.add_argument('--task', default='klue_sts', type=str)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -239,6 +240,9 @@ def main():
 
     if task == "klue_sts":
         # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
+        if model_state_name:
+            model_name, model_state_dict, model_config_dict = load_model_config(f'checkpoint/{model_state_name}')
+
         train_dataset = load_dataset('klue', 'sts', split="train[:100]")  # FIXME change back to train[:80%]
         validation_dataset = load_dataset('klue', 'sts', split="train[-100:]")  # FIXME change back to train[-20%:]
         test_dataset = load_dataset('klue', 'sts', split="validation")
@@ -271,8 +275,7 @@ def main():
             return stats.pearsonr(pred, label)[0]
 
         if model_state_name:
-            model_state, config = load_model_config(f'checkpoint/{model_state_name}')
-            model = Mt5ForRegression(None, data_labels_num, model_state, config)
+            model = Mt5ForRegression(None, data_labels_num, model_state_dict, model_config_dict)
         else:
             model = Mt5ForRegression(model_name, data_labels_num)
 
@@ -304,7 +307,10 @@ def main():
         optimizer = Adam(model.parameters(), lr=learning_rate)
         loss_fn = nn.CrossEntropyLoss()
 
-        pretrain_model(epochs, device, train_dataloader, model, loss_fn, optimizer, None, f'checkpoint/{model_state_name}')
+        def model_save_fn(pretrained_model):
+            save_model_config(f'checkpoint/{model_state_name}', model_name, pretrained_model.mt5.state_dict(), pretrained_model.config.to_dict())
+
+        pretrain_model(epochs, device, train_dataloader, model, loss_fn, optimizer, None, model_save_fn)
 
 
 if __name__ == "__main__":
