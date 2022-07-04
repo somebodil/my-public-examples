@@ -112,7 +112,7 @@ def save_model_config(model_state_dict, model_config_dict, path):
     }, path)
 
 
-def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _, path):
+def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _, model_path):
     model.to(device)
     loss_fn.to(device)
 
@@ -131,7 +131,7 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _, pat
             train_loss += loss.item()
 
             if i % 1000 == 0 or i == len(dataloader) - 1:
-                save_model_config(model.mt5.state_dict(), model.config.to_dict(), path)
+                save_model_config(model.mt5.state_dict(), model.config.to_dict(), model_path)
                 print(f'\n{i}th iteration (train loss): ({train_loss:.4})')
                 train_loss = 0
 
@@ -213,7 +213,7 @@ def main():
     parser.add_argument('--seed', default=4885, type=int)
     parser.add_argument('--temperature', default=0.05, type=float)
     parser.add_argument('--pretrain_dataset', default='kowikitext_20200920.train', type=str)
-    parser.add_argument('--model_state_name', default='', type=str)  # model_state.pt or ''
+    parser.add_argument('--model_state_name', default='model_state.pt', type=str)  # model_state.pt or ''
     parser.add_argument('--task', default='klue_sts', type=str)  # '' or klue_sts, ...
 
     args = parser.parse_known_args()[0]
@@ -240,7 +240,7 @@ def main():
     if task == "klue_sts":
         # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
         train_dataset = load_dataset('klue', 'sts', split="train[:100]")  # FIXME change back to train[:80%]
-        validation_dataset = load_dataset('klue', 'sts', split="train[:100]")  # FIXME change back to train[-20%:]
+        validation_dataset = load_dataset('klue', 'sts', split="train[-100:]")  # FIXME change back to train[-20%:]
         test_dataset = load_dataset('klue', 'sts', split="validation")
         data_labels_num = 1
 
