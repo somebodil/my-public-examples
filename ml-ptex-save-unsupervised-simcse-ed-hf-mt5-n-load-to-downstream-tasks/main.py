@@ -3,10 +3,12 @@ import copy
 import os
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import torch
 from datasets import load_dataset
 from scipy import stats
+from sklearn.metrics import accuracy_score
 from torch import nn
 from torch.optim import Adam
 from torch.utils.data import Dataset, DataLoader
@@ -42,6 +44,34 @@ class Mt5ForRegression(nn.Module):
         linear_out = self.linear(pooler_out)
         sigmoid_out = self.sigmoid(linear_out) * 5
         return sigmoid_out.squeeze()
+
+
+class Mt5ForClassification(nn.Module):
+    def __init__(self, model_name, num_labels, state_dict=None, config_dict=None):
+        super(Mt5ForClassification, self).__init__()
+
+        if model_name is None:
+            if state_dict is None or config_dict is None:
+                raise ValueError("If model_name is None, state_dict and config must be specified.")
+
+            self.config = MT5Config.from_dict(config_dict)
+            self.mt5 = MT5EncoderModel(config=self.config)
+            self.mt5.load_state_dict(state_dict)
+
+        else:
+            if state_dict is not None or config_dict is not None:
+                raise ValueError("If model_name is not None, state_dict and config must be None.")
+
+            self.config = MT5Config.from_pretrained(model_name)
+            self.mt5 = MT5EncoderModel.from_pretrained(model_name)
+
+        self.linear = nn.Linear(in_features=self.config.hidden_size, out_features=num_labels)
+
+    def forward(self, input_ids, attention_mask, **kwargs):
+        mt5_out = self.mt5(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)[0]
+        pooler_out = torch.mean(mt5_out, dim=1)
+        linear_out = self.linear(pooler_out)
+        return linear_out.squeeze()
 
 
 class MT5ForFurtherTrain(nn.Module):
@@ -121,7 +151,7 @@ def pretrain_model(epochs, device, dataloader, model, loss_fn, optimizer, _, mod
         model.train()
         train_loss = 0
         for i, batch in enumerate(tqdm(dataloader)):
-            input_ids, attention_mask, labels = batch['input_ids'].to(device), batch['attention_mask'].to(device), torch.arange(dataloader.batch_size).long().to(device)
+            input_ids, attention_mask, labels = batch['input_ids'].to(device), batch['attention_mask'].to(device), torch.arange(batch['input_ids'].shape[0]).long().to(device)
 
             optimizer.zero_grad()
             predict = model(input_ids, attention_mask)
@@ -208,14 +238,14 @@ def main():
     parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
     parser.add_argument('--batch_size', default=12, type=int)
     parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=5, type=int)
-    parser.add_argument('--lr', default=1e-4, type=float)
+    parser.add_argument('--epochs', default=10, type=int)
+    parser.add_argument('--lr', default=1e-3, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
     parser.add_argument('--temperature', default=0.05, type=float)
-    parser.add_argument('--pretrain_dataset', default='kowikitext_20200920.train', type=str)
-    parser.add_argument('--model_state_name', default='model_state.pt', type=str)  # for downstream tasks, if model_state.pt exist, model_name will be ignored
-    parser.add_argument('--task', default='klue_sts', type=str)
+    parser.add_argument('--pretrain_dataset', default='kowikitext_20200920.train', type=str)  # for pretrained task
+    parser.add_argument('--model_state_name', default='', type=str)  # for downstream tasks, if model_state.pt exist, model_name will be ignored
+    parser.add_argument('--task', default='klue_nli', type=str)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -280,6 +310,55 @@ def main():
             model = Mt5ForRegression(model_name, data_labels_num)
 
         loss_fn = nn.MSELoss()
+        optimizer = Adam(model.parameters(), lr=learning_rate)
+
+        model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer, score_fn)
+        test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn)
+        print(f"\nTest (loss, score) with best model: ({test_loss:.4} / {test_score:.4})")
+
+    elif task == "klue_nli":
+        # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
+        if model_state_name:
+            model_name, model_state_dict, model_config_dict = load_model_config(f'checkpoint/{model_state_name}')
+
+        train_dataset = load_dataset('klue', 'nli', split="train[:100]")  # FIXME change back to train[:80%]
+        validation_dataset = load_dataset('klue', 'nli', split="train[-100:]")  # FIXME change back to train[-20%:]
+        test_dataset = load_dataset('klue', 'nli', split="validation")
+        data_labels_num = 3
+
+        tokenizer = T5Tokenizer.from_pretrained(model_name)
+
+        def format_input(examples):
+            encoded = tokenizer(examples['premise'], examples['hypothesis'], max_length=seq_max_length, truncation=True, padding='max_length')
+            return encoded
+
+        def format_target(example):
+            return {'labels': example['label']}
+
+        def preprocess_dataset(dataset):
+            dataset = dataset.map(format_input, batched=True)
+            dataset = dataset.map(format_target)
+            dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
+            return dataset
+
+        train_dataset = preprocess_dataset(train_dataset)
+        validation_dataset = preprocess_dataset(validation_dataset)
+        test_dataset = preprocess_dataset(test_dataset)
+
+        train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
+        validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size)
+        test_dataloader = DataLoader(test_dataset, batch_size=batch_size)
+
+        def score_fn(output, label):
+            score = accuracy_score(np.argmax(output, axis=1), label)
+            return score
+
+        if model_state_name:
+            model = Mt5ForClassification(None, data_labels_num, model_state_dict, model_config_dict)
+        else:
+            model = Mt5ForClassification(model_name, data_labels_num)
+
+        loss_fn = nn.CrossEntropyLoss()
         optimizer = Adam(model.parameters(), lr=learning_rate)
 
         model = train_model(epochs, device, train_dataloader, validation_dataloader, model, loss_fn, optimizer, score_fn)
