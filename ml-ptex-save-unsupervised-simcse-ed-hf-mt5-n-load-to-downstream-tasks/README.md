@@ -7,6 +7,8 @@ If not specified, program tries to look for `kowikitext_20200920.train`.
 
 ### KLUE STS 
 
+Performance enhanced for KLUE STS dataset.
+
 | model            | lr   | Val Score | Test Score |
 |------------------|------|-----------|------------|
 | google/mt5-small | 1e-3 | 0.9579    | **0.8091** |
@@ -22,6 +24,8 @@ If not specified, program tries to look for `kowikitext_20200920.train`.
 | "                                       | 1e-6 | 0.1373    | -0.05655   |
 
 ### KLUE NLI
+
+Proof of "sentence-level objective may not directly benefit transfer tasks" in sim-cse paper.
 
 | model            | lr   | Val Score | Test Score |
 |------------------|------|-----------|------------|
