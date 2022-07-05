@@ -7,7 +7,7 @@ If not specified, program tries to look for `kowikitext_20200920.train`.
 
 ### KLUE STS 
 
-Performance enhanced for KLUE STS dataset.
+SimCSE enhanced model's performance for KLUE STS dataset.
 
 | model            | lr   | Val Score | Test Score |
 |------------------|------|-----------|------------|
@@ -25,7 +25,8 @@ Performance enhanced for KLUE STS dataset.
 
 ### KLUE NLI
 
-Proof of "sentence-level objective may not directly benefit transfer tasks" in sim-cse paper.
+SimCSE decreased model's performance for KLUE NLI dataset.
+
 
 | model            | lr     | Val Score | Test Score |
 |------------------|--------|-----------|------------|
@@ -44,3 +45,8 @@ Proof of "sentence-level objective may not directly benefit transfer tasks" in s
 | "                                       | 1e-4   | 0.6612    | 0.5583     |
 | "                                       | 1e-5   | 0.477     | 0.3963     |
 | "                                       | 1e-6   | 0.3498    | 0.3383     |
+
+### TODO
+
+* Find why performance decreased for KLUE NLI dataset.
+* See alignment and uniformity for google/mt5-small original vs simcse further trained.
