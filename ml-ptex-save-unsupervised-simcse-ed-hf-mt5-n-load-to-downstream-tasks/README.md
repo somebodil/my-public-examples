@@ -48,5 +48,4 @@ SimCSE decreased model's performance for KLUE NLI dataset.
 
 ### TODO
 
-* Find why performance decreased for KLUE NLI dataset.
-* See alignment and uniformity for google/mt5-small original vs simcse further trained.
+* Find why performance decreased for KLUE NLI dataset - see alignment and uniformity for google/mt5-small original vs simcse further trained.
