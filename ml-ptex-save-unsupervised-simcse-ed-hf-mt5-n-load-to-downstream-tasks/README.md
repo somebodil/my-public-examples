@@ -28,6 +28,9 @@ SimCSE enhanced model's performance for KLUE STS dataset.
 SimCSE decreased model's performance for KLUE NLI dataset, as wrote in Sentence-T5 paper - "We found fine-tuning for classification on an NLI dataset is inferior to contrastive learning as reported in (Gao et al., 2021)" (https://arxiv.org/abs/2108.08877)
 
 
+
+SimCSE 
+
 | model            | lr     | Val Score | Test Score |
 |------------------|--------|-----------|------------|
 | google/mt5-small | 1.5e-3 | 0.704     | 0.635      |
