@@ -1,39 +1,27 @@
 from transformers import MarianMTModel, MarianTokenizer
 
 
-def translate_en_to_fr():
+def translate(model_name, src_text, max_length=64):
+    tokenizer = MarianTokenizer.from_pretrained(model_name)
+    model = MarianMTModel.from_pretrained(model_name)
+    translated_ids = model.generate(**tokenizer(src_text, padding='max_length', max_length=max_length, return_tensors='pt'))
+    out_text = [tokenizer.decode(t, skip_special_tokens=True) for t in translated_ids]
+    return out_text
+
+
+def main():
     src_text = [
         "this is a sentence in english that we want to translate to french",
-        "I am a boy",
-        "I am hungry"
+        "We show that encoder-only models have strong transfer performance while encoder-decoder models perform better on textual similarity tasks.",
+        "We also demonstrate the effectiveness of scaling up the model size, which greatly improves sentence embedding quality."
     ]
 
-    model_name = "Helsinki-NLP/opus-mt-en-fr"
+    out_text = translate("Helsinki-NLP/opus-mt-en-fr", src_text)
+    back_translated_text = translate("Helsinki-NLP/opus-mt-fr-en", out_text)
 
-    tokenizer = MarianTokenizer.from_pretrained(model_name)
-    model = MarianMTModel.from_pretrained(model_name)
-    translated = model.generate(**tokenizer(src_text, padding='max_length', max_length=32, return_tensors='pt'))
-    print([tokenizer.convert_ids_to_tokens(t, skip_special_tokens=True) for t in translated])
-    print()
-
-
-def translate_en_to_fr_pt_es():
-    src_text = [
-        ">>fra<< this is a sentence in english that we want to translate to french",
-        ">>por<< This should go to portuguese",
-        ">>esp<< And this to Spanish",
-    ]
-
-    model_name = "Helsinki-NLP/opus-mt-en-roa"
-
-    tokenizer = MarianTokenizer.from_pretrained(model_name)
-    model = MarianMTModel.from_pretrained(model_name)
-
-    translated = model.generate(**tokenizer(src_text, padding='max_length', max_length=32, return_tensors='pt'))
-    print([tokenizer.convert_ids_to_tokens(t, skip_special_tokens=True) for t in translated])
-    print()
+    print("src_text", src_text)
+    print("back_translated_text", back_translated_text)
 
 
 if __name__ == "__main__":
-    translate_en_to_fr()
-    translate_en_to_fr_pt_es()
+    main()
