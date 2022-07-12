@@ -78,7 +78,7 @@ class MT5ForFurtherTrain(nn.Module):
     def __init__(self, model_name, temperature):
         super(MT5ForFurtherTrain, self).__init__()
 
-        self.config = MT5Config.from_pretrained(model_name)
+        self.config = MT5Config.from_pretrained(model_name)  # uses default dropout rate = 0.1
         self.mt5 = MT5EncoderModel.from_pretrained(model_name)
 
         self.cosine_similarity = nn.CosineSimilarity(dim=-1)
@@ -109,18 +109,19 @@ class MT5ForFurtherTrain(nn.Module):
         return cos_sim_out
 
 
-class SimCSEDataset(Dataset):
-    def __init__(self, data_frame, tokenizer, max_length):
-        self.len = len(data_frame['sentence'])
+class UnsupervisedSimCseDataset(Dataset):
+    def __init__(self, data_frame, tokenizer, max_length, column_name='sentence'):
+        self.len = len(data_frame)
         self.data_frame = data_frame
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.column_name = column_name
 
     def __len__(self):
         return self.len
 
     def __getitem__(self, idx):
-        encodings = self.tokenizer(self.data_frame['sentence'][idx], padding='max_length', max_length=self.max_length, truncation=True, return_tensors="pt")
+        encodings = self.tokenizer(self.data_frame[self.column_name][idx], padding='max_length', max_length=self.max_length, truncation=True, return_tensors="pt")
 
         return {
             "input_ids": encodings['input_ids'].squeeze(0),
@@ -244,8 +245,8 @@ def main():
     parser.add_argument('--seed', default=4885, type=int)
     parser.add_argument('--temperature', default=0.05, type=float)
     parser.add_argument('--pretrain_dataset', default='kowikitext_20200920.train', type=str)  # for pretrained task
-    parser.add_argument('--model_state_name', default='', type=str)  # for downstream tasks, if model_state.pt exist, model_name will be ignored
-    parser.add_argument('--task', default='klue_nli', type=str)
+    parser.add_argument('--model_state_name', default='', type=str)  # for unsup_simcse - should exist, for other tasks - if model_state.pt exist, model_name will be ignored
+    parser.add_argument('--task', default='unsup_simcse', type=str)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -365,7 +366,7 @@ def main():
         test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn)
         print(f"\nTest (loss, score) with best model: ({test_loss:.4} / {test_score:.4})")
 
-    else:
+    elif task == 'unsup_simcse':
         # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
         temperature = args.temperature
         pretrain_dataset = args.pretrain_dataset
@@ -380,7 +381,7 @@ def main():
             df_train = pd.DataFrame(lines, columns=['sentence'])
 
         tokenizer = T5Tokenizer.from_pretrained(model_name)
-        train_dataset = SimCSEDataset(df_train, tokenizer, seq_max_length)
+        train_dataset = UnsupervisedSimCseDataset(df_train, tokenizer, seq_max_length)
         train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
         model = MT5ForFurtherTrain(model_name, temperature)
         optimizer = Adam(model.parameters(), lr=learning_rate)
@@ -390,6 +391,9 @@ def main():
             save_model_config(f'checkpoint/{model_state_name}', model_name, pretrained_model.mt5.state_dict(), pretrained_model.config.to_dict())
 
         pretrain_model(epochs, device, train_dataloader, model, loss_fn, optimizer, None, model_save_fn)
+
+    else:
+        raise ValueError(f"Unknown task: {task}")
 
 
 if __name__ == "__main__":
