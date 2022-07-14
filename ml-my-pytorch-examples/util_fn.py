@@ -79,6 +79,7 @@ def train_model(
         param_disable_tqdm=False):
     """
     Callback function cb_after_each_step is always called after every each step.
+    Batch size is calculated using first column of input batch.
     Developer should not forget to call clear_train_score_args manually, or memory will explode.
     """
 
@@ -92,7 +93,7 @@ def train_model(
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(progress_bar, 1):
             with logging_redirect_tqdm():
-                batch_size = len(batch[next(iter(batch))])  # Calculate batch size using first element
+                batch_size = len(batch[next(iter(batch))])
                 batch = {k: v.to(device) for k, v in batch.items()}
 
                 optimizer.zero_grad()
@@ -111,6 +112,7 @@ def train_model(
 def evaluate_model(device, dataloader, model, fn_loss, fn_score, param_disable_tqdm=False):
     """
     Function always assumes input batch 'labels' column.
+    Batch size is calculated using first column of input batch.
     """
 
     model.to(device)
@@ -123,7 +125,7 @@ def evaluate_model(device, dataloader, model, fn_loss, fn_score, param_disable_t
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluate", disable=param_disable_tqdm):
             with logging_redirect_tqdm():
-                batch_size = len(batch[next(iter(batch))])  # Calculate batch size using first element
+                batch_size = len(batch[next(iter(batch))])
                 batch = {k: v.to(device) for k, v in batch.items()}
 
                 predict = model(**batch)

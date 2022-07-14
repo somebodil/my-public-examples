@@ -43,8 +43,8 @@ class Word2VecDataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            'center': self.data['center'][idx],
-            'context': self.data['context'][idx],
+            'input_ids': self.data['center'][idx],
+            'labels': self.data['context'][idx],
         }
 
 
@@ -54,9 +54,9 @@ class Word2Vec(nn.Module):
         self.embed = nn.Embedding(vocab_size, embedding_size)
         self.expand = nn.Linear(embedding_size, vocab_size, bias=False)
 
-    def forward(self, center, **kwargs):
+    def forward(self, input_ids, **kwargs):
         # Encode input to lower-dimensional representation
-        hidden = self.embed(center)
+        hidden = self.embed(input_ids)
         # Expand hidden layer to predictions
         logits = self.expand(hidden)
         return logits
@@ -141,7 +141,7 @@ def main():
     criterion = nn.CrossEntropyLoss()
 
     def fn_loss(predicts, batch, batch_size):
-        return criterion(predicts, batch['context'])
+        return criterion(predicts, batch['labels'])
 
     def cb_after_each_step(train_callback_args):
         train_callback_args.clear_train_score_args()
