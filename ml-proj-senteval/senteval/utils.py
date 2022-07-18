@@ -85,7 +85,9 @@ def get_optimizer(s):
     else:
         raise Exception('Unknown optimization method: "%s"' % method)
 
-    # check that we give good parameters to the optimizer <= commented safely based on https://github.com/facebookresearch/SentEval/issues/88
+    # check that we give good parameters to the optimizer
+    # <= Commented code safely based on https://github.com/facebookresearch/SentEval/issues/88
+    # <= Won't need to be commented after https://github.com/facebookresearch/SentEval/pull/87 is merged
     # expected_args = inspect.getargspec(optim_fn.__init__)[0]
     # assert expected_args[:2] == ['self', 'params']
     # if not all(k in expected_args[2:] for k in optim_params.keys()):

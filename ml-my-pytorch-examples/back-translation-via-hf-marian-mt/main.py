@@ -1,4 +1,9 @@
+import logging
+
 from transformers import MarianMTModel, MarianTokenizer
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def translate(model_name, src_text, max_length=64):
@@ -19,8 +24,8 @@ def main():
     out_text = translate("Helsinki-NLP/opus-mt-en-fr", src_text)
     back_translated_text = translate("Helsinki-NLP/opus-mt-fr-en", out_text)
 
-    print("src_text", src_text)
-    print("back_translated_text", back_translated_text)
+    logger.info(f"src_text : {src_text}")
+    logger.info(f"back_translated_text {back_translated_text}")
 
 
 if __name__ == "__main__":

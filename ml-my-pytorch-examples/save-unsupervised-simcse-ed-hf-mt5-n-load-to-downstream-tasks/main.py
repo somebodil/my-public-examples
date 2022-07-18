@@ -91,24 +91,24 @@ class MT5ForFurtherTrain(nn.Module):
     def forward(self, input_ids, attention_mask, **kwargs):
         batch_size = input_ids.shape[0]
 
-        # copy
+        # copy (batch_size, seq_len) => (batch_size, 2, seq_len)
         input_ids = input_ids.unsqueeze(1).repeat(1, 2, 1)
         attention_mask = attention_mask.unsqueeze(1).repeat(1, 2, 1)
 
-        # flat
+        # flat => (batch_size * 2, seq_len)
         input_ids = input_ids.view((-1, input_ids.shape[-1]))
         attention_mask = attention_mask.view((-1, input_ids.shape[-1]))
 
-        # encode
+        # encode => (batch_size * 2, hidden_size)
         mt5_out = self.mt5(input_ids, attention_mask)[0]
         pooler_out = torch.mean(mt5_out, dim=1)
 
-        # revert flat
+        # revert flat => (batch_size, 2, hidden_size)
         pooler_out = pooler_out.view((batch_size, 2, pooler_out.shape[-1]))
 
         # cos sim
-        z1, z2 = pooler_out[:, 0], pooler_out[:, 1]
-        cos_sim_out = self.cosine_similarity(z1.unsqueeze(1), z2.unsqueeze(0)) / self.temperature
+        z1, z2 = pooler_out[:, 0], pooler_out[:, 1]  # (batch_size, hidden_size)
+        cos_sim_out = self.cosine_similarity(z1.unsqueeze(1), z2.unsqueeze(0)) / self.temperature  # (batch_size, 1, hidden_size), (batch_size, hidden_size, 1)
 
         return cos_sim_out
 
@@ -352,7 +352,7 @@ def main():
         criterion = nn.CrossEntropyLoss()
 
         def fn_loss(predicts, batch, batch_size):
-            labels = torch.arange(batch_size).long().to(device)
+            labels = torch.arange(batch_size).long().to(device)  # [1,2,3,4,5]
             return criterion(predicts, labels)
 
         def cb_after_each_step(train_callback_args):
