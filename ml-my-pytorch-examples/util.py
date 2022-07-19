@@ -73,12 +73,12 @@ def train_model(
         device,
         dataloader,
         model,
-        fn_loss,
+        loss_fn,
         optimizer,
-        cb_after_each_step=None,
-        param_disable_tqdm=False):
+        after_each_step_fn=None,
+        disable_tqdm=False):
     """
-    Callback function cb_after_each_step is always called after every each step.
+    Callback function after_each_step_fn is always called after every each step.
     Batch size is calculated using first column of input batch.
     Developer should not forget to call clear_train_score_args manually, or memory will explode.
     """
@@ -89,7 +89,7 @@ def train_model(
     for epoch in range(1, epochs + 1):
         model.train()
 
-        progress_bar = tqdm(dataloader, disable=param_disable_tqdm)
+        progress_bar = tqdm(dataloader, disable=disable_tqdm)
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(progress_bar, 1):
             with logging_redirect_tqdm():
@@ -98,18 +98,18 @@ def train_model(
 
                 optimizer.zero_grad()
                 predict = model(**batch)
-                loss = fn_loss(predict, batch, batch_size)
+                loss = loss_fn(predict, batch, batch_size)
                 loss.backward()
                 optimizer.step()
 
-                if cb_after_each_step:
+                if after_each_step_fn:
                     train_callback_args.set_train_score_args(step, epoch, loss, predict, batch, batch_size)
-                    cb_after_each_step(train_callback_args)
+                    after_each_step_fn(train_callback_args)
 
     return train_callback_args.best_model, train_callback_args.best_val_epoch, train_callback_args.best_val_loss, train_callback_args.best_val_score
 
 
-def evaluate_model(device, dataloader, model, fn_loss, fn_score, param_disable_tqdm=False):
+def evaluate_model(device, dataloader, model, loss_fn, score_fn, disable_tqdm=False):
     """
     Function always assumes input batch 'labels' column.
     Batch size is calculated using first column of input batch.
@@ -123,17 +123,17 @@ def evaluate_model(device, dataloader, model, fn_loss, fn_score, param_disable_t
 
     model.eval()
     with torch.no_grad():
-        for batch in tqdm(dataloader, desc="Evaluate", disable=param_disable_tqdm):
+        for batch in tqdm(dataloader, desc="Evaluate", disable=disable_tqdm):
             with logging_redirect_tqdm():
                 batch_size = len(batch[next(iter(batch))])
                 batch = {k: v.to(device) for k, v in batch.items()}
 
                 predict = model(**batch)
-                loss = fn_loss(predict, batch, batch_size)
+                loss = loss_fn(predict, batch, batch_size)
 
                 eval_loss += loss.item()
                 eval_pred.extend(predict.tolist())
                 eval_label.extend(batch['labels'].tolist())
 
-    eval_score = fn_score(eval_pred, eval_label)
+    eval_score = score_fn(eval_pred, eval_label)
     return eval_loss, eval_score

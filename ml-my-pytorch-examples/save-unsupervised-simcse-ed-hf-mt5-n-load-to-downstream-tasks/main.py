@@ -14,7 +14,7 @@ from torch.optim import Adam
 from torch.utils.data import Dataset, DataLoader
 from transformers import set_seed, T5Tokenizer, MT5Config, MT5EncoderModel
 
-from util_fn import train_model, evaluate_model
+from util import train_model, evaluate_model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -226,21 +226,21 @@ def main():
         validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size)
         test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size)
 
-        def fn_loss(predicts, batch, batch_size):
+        def loss_fn(predicts, batch, batch_size):
             return criterion(predicts, batch['labels'])
 
-        def fn_score(pred, label):
+        def score_fn(pred, label):
             return stats.pearsonr(pred, label)[0]
 
-        def cb_after_each_step(train_callback_args):
+        def after_each_step_fn(train_callback_args):
             if train_callback_args.is_end_of_epoch():
                 train_score = 0
                 for i in range(train_callback_args.train_num_batches):
-                    train_score += fn_score(train_callback_args.train_predicts[i], train_callback_args.train_batches[i]['labels'])
+                    train_score += score_fn(train_callback_args.train_predicts[i], train_callback_args.train_batches[i]['labels'])
 
                 train_score /= train_callback_args.train_num_batches
 
-                val_loss, val_score = evaluate_model(device, validation_dataloader, train_callback_args.model, fn_loss, fn_score, param_disable_tqdm=True)
+                val_loss, val_score = evaluate_model(device, validation_dataloader, train_callback_args.model, loss_fn, score_fn, disable_tqdm=True)
                 if train_callback_args.is_greater_than_best_val_score(val_score):
                     train_callback_args.set_best_val_args(val_loss, val_score)
 
@@ -252,13 +252,13 @@ def main():
             device,
             train_dataloader,
             model,
-            fn_loss,
+            loss_fn,
             optimizer,
-            cb_after_each_step=cb_after_each_step,
-            param_disable_tqdm=True
+            after_each_step_fn=after_each_step_fn,
+            disable_tqdm=True
         )
 
-        test_loss, test_score = evaluate_model(device, test_dataloader, model, fn_loss, fn_score, param_disable_tqdm=True)
+        test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn, disable_tqdm=True)
         logger.info(f"Test (loss, score) with best val model (epoch, loss, score) : ({test_loss:.2} / {test_score:.2}), ({best_val_epoch}, {best_val_loss:.2} / {best_val_score:.2})")
 
     elif task == "klue_nli":
@@ -299,21 +299,21 @@ def main():
         validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size)
         test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size)
 
-        def fn_loss(predicts, batch, batch_size):
+        def loss_fn(predicts, batch, batch_size):
             return criterion(predicts, batch['labels'])
 
-        def fn_score(pred, label):
+        def score_fn(pred, label):
             return accuracy_score(label, np.argmax(pred, axis=1))
 
-        def cb_after_each_step(train_callback_args):
+        def after_each_step_fn(train_callback_args):
             if train_callback_args.is_end_of_epoch():
                 train_score = 0
                 for i in range(train_callback_args.train_num_batches):
-                    train_score += fn_score(train_callback_args.train_predicts[i], train_callback_args.train_batches[i]['labels'])
+                    train_score += score_fn(train_callback_args.train_predicts[i], train_callback_args.train_batches[i]['labels'])
 
                 train_score /= train_callback_args.train_num_batches
 
-                val_loss, val_score = evaluate_model(device, validation_dataloader, train_callback_args.model, fn_loss, fn_score, param_disable_tqdm=True)
+                val_loss, val_score = evaluate_model(device, validation_dataloader, train_callback_args.model, loss_fn, score_fn, disable_tqdm=True)
                 if train_callback_args.is_greater_than_best_val_score(val_score):
                     train_callback_args.set_best_val_args(val_loss, val_score)
 
@@ -325,13 +325,13 @@ def main():
             device,
             train_dataloader,
             model,
-            fn_loss,
+            loss_fn,
             optimizer,
-            cb_after_each_step=cb_after_each_step,
-            param_disable_tqdm=True
+            after_each_step_fn=after_each_step_fn,
+            disable_tqdm=True
         )
 
-        test_loss, test_score = evaluate_model(device, test_dataloader, model, fn_loss, fn_score, param_disable_tqdm=True)
+        test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn, disable_tqdm=True)
         logger.info(f"Test (loss, score) with best val model (epoch, loss, score) : ({test_loss:.2} / {test_score:.2}), ({best_val_epoch}, {best_val_loss:.2} / {best_val_score:.2})")
 
     elif task == 'unsup_simcse':
@@ -355,11 +355,11 @@ def main():
         optimizer = Adam(model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
 
-        def fn_loss(predicts, batch, batch_size):
+        def loss_fn(predicts, batch, batch_size):
             labels = torch.arange(batch_size).long().to(device)  # [1,2,3,4,5]
             return criterion(predicts, labels)
 
-        def cb_after_each_step(train_callback_args):
+        def after_each_step_fn(train_callback_args):
             if train_callback_args.is_step_interval(10):
                 save_model_config(f'checkpoint/{model_state_name}', model_name, train_callback_args.best_model.mt5.state_dict(), train_callback_args.best_model.config.to_dict())
                 logger.info(f'Saved model config at step {train_callback_args.get_cumulated_step()}')
@@ -369,9 +369,9 @@ def main():
             device,
             train_dataloader,
             model,
-            fn_loss,
+            loss_fn,
             optimizer,
-            cb_after_each_step=cb_after_each_step
+            after_each_step_fn=after_each_step_fn
         )
 
     else:

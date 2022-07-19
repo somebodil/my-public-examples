@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from transformers import BertModel, BertTokenizer, BertConfig
 from transformers import set_seed
 
-from util_fn import train_model, evaluate_model
+from util import train_model, evaluate_model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -99,21 +99,21 @@ def main():
     optimizer = Adam(model.parameters(), lr=learning_rate)
     criterion = nn.MSELoss()
 
-    def fn_loss(predicts, batch, batch_size):
+    def loss_fn(predicts, batch, batch_size):
         return criterion(predicts, batch['labels'])
 
-    def fn_score(pred, label):
+    def score_fn(pred, label):
         return stats.pearsonr(pred, label)[0]
 
-    def cb_after_each_step(train_callback_args):
+    def after_each_step_fn(train_callback_args):
         if train_callback_args.is_end_of_epoch():
             train_score = 0
             for i in range(train_callback_args.train_num_batches):
-                train_score += fn_score(train_callback_args.train_predicts[i], train_callback_args.train_batches[i]['labels'])
+                train_score += score_fn(train_callback_args.train_predicts[i], train_callback_args.train_batches[i]['labels'])
 
             train_score /= train_callback_args.train_num_batches
 
-            val_loss, val_score = evaluate_model(device, validation_dataloader, train_callback_args.model, fn_loss, fn_score, param_disable_tqdm=True)
+            val_loss, val_score = evaluate_model(device, validation_dataloader, train_callback_args.model, loss_fn, score_fn, disable_tqdm=True)
             if train_callback_args.is_greater_than_best_val_score(val_score):
                 train_callback_args.set_best_val_args(val_loss, val_score)
 
@@ -125,13 +125,13 @@ def main():
         device,
         train_dataloader,
         model,
-        fn_loss,
+        loss_fn,
         optimizer,
-        cb_after_each_step=cb_after_each_step,
-        param_disable_tqdm=True
+        after_each_step_fn=after_each_step_fn,
+        disable_tqdm=True
     )
 
-    test_loss, test_score = evaluate_model(device, test_dataloader, model, fn_loss, fn_score, param_disable_tqdm=True)
+    test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn, disable_tqdm=True)
     logger.info(f"Test (loss, score) with best val model (epoch, loss, score) : ({test_loss:.2} / {test_score:.2}), ({best_val_epoch}, {best_val_loss:.2} / {best_val_score:.2})")
 
 

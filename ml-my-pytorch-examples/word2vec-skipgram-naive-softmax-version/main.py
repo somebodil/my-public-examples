@@ -15,7 +15,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader, Dataset
 from transformers import set_seed
 
-from util_fn import train_model
+from util import train_model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -143,10 +143,10 @@ def main():
     optimizer = Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
-    def fn_loss(predicts, batch, batch_size):
+    def loss_fn(predicts, batch, batch_size):
         return criterion(predicts, batch['labels'])
 
-    def cb_after_each_step(train_callback_args):
+    def after_each_step_fn(train_callback_args):
         train_callback_args.clear_train_score_args()
         if train_callback_args.is_start_of_train() or train_callback_args.is_end_of_train():
             def get_k_similar_words(w, dm, k=10):
@@ -169,9 +169,9 @@ def main():
         device,
         dataloader,
         model,
-        fn_loss,
+        loss_fn,
         optimizer,
-        cb_after_each_step=cb_after_each_step
+        after_each_step_fn=after_each_step_fn
     )
 
 

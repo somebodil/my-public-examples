@@ -13,7 +13,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from transformers import set_seed, BertTokenizer, BertConfig, BertModel
 
-from util_fn import train_model
+from util import train_model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -140,17 +140,17 @@ def pretrain_main(model_save_path):
     optimizer = Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
-    def fn_loss(predicts, batch, batch_size):
+    def loss_fn(predicts, batch, batch_size):
         return criterion(predicts[batch['masked_arr']], batch['labels'][batch['masked_arr']]) / batch_size
 
-    def fn_score(pred, label):
+    def score_fn(pred, label):
         return accuracy_score(label, np.argmax(pred, axis=-1))
 
-    def cb_after_each_step(train_callback_args):
+    def after_each_step_fn(train_callback_args):
         if train_callback_args.is_end_of_epoch():
             train_score = 0
             for i in range(train_callback_args.train_num_batches):
-                train_score += fn_score(train_callback_args.train_predicts[i][train_callback_args.train_batches[i]['masked_arr']],
+                train_score += score_fn(train_callback_args.train_predicts[i][train_callback_args.train_batches[i]['masked_arr']],
                                         train_callback_args.train_batches[i]['labels'][train_callback_args.train_batches[i]['masked_arr']])
 
             train_score /= train_callback_args.train_num_batches
@@ -165,10 +165,10 @@ def pretrain_main(model_save_path):
         device,
         eli5_dataloader,
         model,
-        fn_loss,
+        loss_fn,
         optimizer,
-        cb_after_each_step=cb_after_each_step,
-        param_disable_tqdm=True
+        after_each_step_fn=after_each_step_fn,
+        disable_tqdm=True
     )
 
 
