@@ -56,13 +56,15 @@ class GlueSst2Dataset(Dataset):
 def main():
     # Parser --
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', default='bert-base-cased', type=str)  # should be bert-xxx
-    parser.add_argument('--batch_max_size', default=32, type=int)
-    parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=5, type=int)
-    parser.add_argument('--lr', default=1e-5, type=float)
+
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
+
+    parser.add_argument('--model_name', default='bert-base-cased', type=str)  # should be bert-xxx
+    parser.add_argument('--seq_max_length', default=128, type=int)
+    parser.add_argument('--batch_max_size', default=32, type=int)
+    parser.add_argument('--epochs', default=5, type=int)
+    parser.add_argument('--lr', default=1e-5, type=float)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -72,16 +74,16 @@ def main():
     for a in args.__dict__:
         logger.info(f'{a}: {args.__dict__[a]}')
 
-    # Device --
+    # Device & Seed --
     device = args.device
+    set_seed(args.seed)
 
     # Hyper parameter --
-    set_seed(args.seed)
-    learning_rate = args.lr
+    model_name = args.model_name
+    seq_max_length = args.seq_max_length
     batch_max_size = args.batch_max_size
     epochs = args.epochs
-    seq_max_length = args.seq_max_length
-    model_name = args.model_name
+    learning_rate = args.lr
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)

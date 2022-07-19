@@ -65,11 +65,13 @@ class Word2Vec(nn.Module):
 def main():
     # Parser --
     parser = argparse.ArgumentParser()
+    parser.add_argument('--gpu', default=0, type=int)
+    parser.add_argument('--seed', default=4885, type=int)
+
     parser.add_argument('--batch_max_size', default=500, type=int)
     parser.add_argument('--epochs', default=5, type=int)
     parser.add_argument('--lr', default=1e-3, type=float)
-    parser.add_argument('--gpu', default=0, type=int)
-    parser.add_argument('--seed', default=4885, type=int)
+
     parser.add_argument('--window_size', default=6, type=int)
 
     args = parser.parse_known_args()[0]
@@ -80,14 +82,15 @@ def main():
     for a in args.__dict__:
         logger.info(f'{a}: {args.__dict__[a]}')
 
-    # Device --
+    # Device & Seed --
     device = args.device
+    set_seed(args.seed)
 
     # Hyper parameter --
-    set_seed(args.seed)
-    epochs = args.epochs
     batch_max_size = args.batch_max_size
+    epochs = args.epochs
     learning_rate = args.lr
+
     window_size = args.window_size
     embed_size = 200
 

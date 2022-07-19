@@ -151,17 +151,20 @@ def save_model_config(path, model_name, model_state_dict, model_config_dict):
 def main():
     # Parser --
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
-    parser.add_argument('--batch_max_size', default=12, type=int)
-    parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--epochs', default=1, type=int)
-    parser.add_argument('--lr', default=1e-3, type=float)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--seed', default=4885, type=int)
+
+    parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
+    parser.add_argument('--seq_max_length', default=128, type=int)
+    parser.add_argument('--batch_max_size', default=12, type=int)
+    parser.add_argument('--epochs', default=1, type=int)
+    parser.add_argument('--lr', default=1e-3, type=float)
+
+    parser.add_argument('--task', default='unsup_simcse', type=str)
+    parser.add_argument('--model_state_name', default='model_state.pt', type=str)  # for unsup_simcse - should exist, for other tasks - if model_state.pt exist, model_name will be ignored
+
     parser.add_argument('--temperature', default=0.05, type=float)
     parser.add_argument('--pretrain_dataset', default='kowikitext_20200920.train', type=str)  # for pretrained task
-    parser.add_argument('--model_state_name', default='model_state.pt', type=str)  # for unsup_simcse - should exist, for other tasks - if model_state.pt exist, model_name will be ignored
-    parser.add_argument('--task', default='unsup_simcse', type=str)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -171,16 +174,17 @@ def main():
     for a in args.__dict__:
         logger.info(f'{a}: {args.__dict__[a]}')
 
-    # Device --
+    # Device & Seed --
     device = args.device
+    set_seed(args.seed)
 
     # Hyper parameter --
-    set_seed(args.seed)
     model_name = args.model_name
-    batch_max_size = args.batch_max_size
     seq_max_length = args.seq_max_length
+    batch_max_size = args.batch_max_size
     epochs = args.epochs
     learning_rate = args.lr
+
     task = args.task
     model_state_name = args.model_state_name
 
