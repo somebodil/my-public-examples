@@ -2,6 +2,7 @@ import argparse
 import logging
 from datetime import datetime
 
+import pandas as pd
 import torch
 from datasets import load_dataset
 from scipy import stats
@@ -41,7 +42,6 @@ def main():
     parser.add_argument('--seed', default=4885, type=int)
 
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
-    parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--batch_max_size', default=32, type=int)
     parser.add_argument('--epochs', default=10, type=int)
     parser.add_argument('--lr', default=1e-5, type=float)
@@ -60,7 +60,6 @@ def main():
 
     # Hyper parameter --
     model_name = args.model_name
-    seq_max_length = args.seq_max_length
     batch_max_size = args.batch_max_size
     epochs = args.epochs
     learning_rate = args.lr
@@ -68,32 +67,23 @@ def main():
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)
 
-    def format_input(examples):
-        encoded = tokenizer(examples['sentence1'], examples['sentence2'], max_length=seq_max_length, truncation=True, padding='max_length')
-        return encoded
-
-    def format_target(examples):
-        changed = {'labels': examples['label']}
-        return changed
-
-    def preprocess_dataset(dataset):
-        dataset = dataset.map(format_input, batched=True)
-        dataset = dataset.map(format_target, batched=True)
-        dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'token_type_ids', 'labels'])
-        return dataset
-
     train_dataset = load_dataset('glue', 'stsb', split="train[:100]")  # FIXME change back to train[:80%]
     validation_dataset = load_dataset('glue', 'stsb', split="train[-100:]")  # FIXME change back to train[-20%:]
     test_dataset = load_dataset('glue', 'stsb', split="validation[:100]")  # FIXME change back to validation
     data_labels_num = 1
 
-    train_dataset = preprocess_dataset(train_dataset)
-    validation_dataset = preprocess_dataset(validation_dataset)
-    test_dataset = preprocess_dataset(test_dataset)
+    def collate_fn(batch):
+        batch = pd.DataFrame(batch)
+        tokenized = tokenizer(batch['sentence1'].tolist(), batch['sentence2'].tolist(), padding=True, truncation=True, return_tensors="pt")
 
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size)
-    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size)
+        return {
+            **tokenized,
+            'labels': torch.tensor(batch['label'], dtype=torch.float32)
+        }
+
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
+    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
 
     model = BertForRegression(model_name, data_labels_num)
     optimizer = Adam(model.parameters(), lr=learning_rate)

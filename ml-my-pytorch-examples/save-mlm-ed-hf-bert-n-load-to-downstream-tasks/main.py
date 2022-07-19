@@ -5,6 +5,7 @@ import random
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
 import torch
 from datasets import load_dataset
 from sklearn.metrics import accuracy_score
@@ -83,8 +84,7 @@ def pretrain_main(model_save_path):
     parser.add_argument('--seed', default=4885, type=int)
 
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
-    parser.add_argument('--seq_max_length', default=128, type=int)
-    parser.add_argument('--batch_max_size', default=32, type=int)
+    parser.add_argument('--batch_max_size', default=4, type=int)
     parser.add_argument('--epochs', default=30, type=int)
     parser.add_argument('--lr', default=3e-5, type=float)
 
@@ -102,13 +102,15 @@ def pretrain_main(model_save_path):
 
     # Hyper parameter --
     model_name = args.model_name
-    seq_max_length = args.seq_max_length
     batch_max_size = args.batch_max_size
     epochs = args.epochs
     learning_rate = args.lr
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     tokenizer = BertTokenizer.from_pretrained(model_name)
+
+    eli5 = load_dataset("eli5", split="train_asks[:50]")  # FIXME revert
+    eli5 = eli5.flatten()
 
     def mask_random_token(element):
         if element == tokenizer.cls_token_id or element == tokenizer.sep_token_id or element == tokenizer.pad_token_id:
@@ -118,23 +120,20 @@ def pretrain_main(model_save_path):
 
         return element
 
-    def format_input_target(example):
-        long_text = " ".join(example["answers.text"])
-        encodings = tokenizer(long_text, max_length=seq_max_length, truncation=True, padding='max_length', return_tensors='pt')
+    def collate_fn(batch):
+        batch = pd.DataFrame(batch)
+
+        answer_texts = [' '.join(sentence_list) for sentence_list in batch["answers.text"].tolist()]
+        encodings = tokenizer(answer_texts, truncation=True, padding=True, return_tensors='pt')
         encodings["labels"] = encodings["input_ids"].clone()
 
-        for k in encodings.keys():
-            encodings[k] = encodings[k].squeeze()
+        for i, input_ids in enumerate(encodings['input_ids']):
+            encodings["input_ids"][i] = torch.tensor(list(map(mask_random_token, input_ids)))
 
-        encodings["input_ids"] = torch.tensor(list(map(mask_random_token, encodings['input_ids'])))
         encodings["masked_arr"] = encodings["input_ids"] != encodings['labels']
         return encodings
 
-    eli5 = load_dataset("eli5", split="train_asks[:50]")  # FIXME revert
-    eli5 = eli5.flatten()
-    eli5 = eli5.map(format_input_target)
-    eli5.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'masked_arr', 'labels'])
-    eli5_dataloader = DataLoader(eli5, batch_size=batch_max_size)
+    eli5_dataloader = DataLoader(eli5, batch_size=batch_max_size, collate_fn=collate_fn)
 
     model = BertForFurtherTrainByMLM(model_name)
     optimizer = Adam(model.parameters(), lr=learning_rate)
@@ -168,7 +167,7 @@ def pretrain_main(model_save_path):
         loss_fn,
         optimizer,
         after_each_step_fn=after_each_step_fn,
-        disable_tqdm=True
+        disable_tqdm=False
     )
 
 

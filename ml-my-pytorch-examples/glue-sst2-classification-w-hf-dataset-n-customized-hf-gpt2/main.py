@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
 import torch
 from datasets import load_dataset
 from sklearn.metrics import accuracy_score
@@ -247,7 +248,6 @@ def main():
     parser.add_argument('--seed', default=4885, type=int)
 
     parser.add_argument('--model_name', default='gpt2', type=str)  # should be gpt2-xxx
-    parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--batch_max_size', default=16, type=int)
     parser.add_argument('--epochs', default=10, type=int)
     parser.add_argument('--lr', default=5e-6, type=float)
@@ -266,7 +266,6 @@ def main():
 
     # Hyper parameter --
     model_name = args.model_name
-    seq_max_length = args.seq_max_length
     batch_max_size = args.batch_max_size
     epochs = args.epochs
     learning_rate = args.lr
@@ -275,30 +274,23 @@ def main():
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
-    def format_input(examples):
-        return tokenizer(examples['sentence'], max_length=seq_max_length, truncation=True, padding='max_length')
-
-    def format_target(examples):
-        return {'labels': examples['label']}
-
-    def preprocess_dataset(dataset):
-        dataset = dataset.map(format_input, batched=True)
-        dataset = dataset.map(format_target, batched=True)
-        dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
-        return dataset
-
     train_dataset = load_dataset('glue', 'sst2', split="train[:100]")  # FIXME change back to train[:80%]
     validation_dataset = load_dataset('glue', 'sst2', split="train[-100:]")  # FIXME change back to train[-20%:]
     test_dataset = load_dataset('glue', 'sst2', split="validation[:100]")  # FIXME change back to validation
     dataset_num_labels = 2
 
-    train_dataset = preprocess_dataset(train_dataset)
-    validation_dataset = preprocess_dataset(validation_dataset)
-    test_dataset = preprocess_dataset(test_dataset)
+    def collate_fn(batch):
+        batch = pd.DataFrame(batch)
+        tokenized = tokenizer(batch['sentence'].tolist(), padding=True, truncation=True, return_tensors="pt")
 
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size)
-    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size)
+        return {
+            **tokenized,
+            'labels': torch.tensor(batch['label'])
+        }
+
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
+    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
 
     model = Gpt2ForClassification(model_name, dataset_num_labels)
     optimizer = Adam(model.parameters(), lr=learning_rate)

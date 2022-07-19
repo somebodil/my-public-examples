@@ -34,22 +34,17 @@ class BertForClassification(nn.Module):
 
 class GlueSst2Dataset(Dataset):
 
-    def __init__(self, data_frame, tokenizer, max_length):
-        self.len = len(data_frame['label'])
+    def __init__(self, data_frame):
+        self.len = len(data_frame)
         self.data_frame = data_frame
-        self.tokenizer = tokenizer
-        self.max_length = max_length
 
     def __len__(self):
         return self.len
 
     def __getitem__(self, idx):
-        encodings = self.tokenizer(self.data_frame['sentence'][idx], padding='max_length', max_length=self.max_length, truncation=True, return_tensors="pt")
-
         return {
-            "labels": self.data_frame['label'][idx],
-            "input_ids": encodings['input_ids'].squeeze(0),
-            "attention_mask": encodings['attention_mask'].squeeze(0)
+            'sentence': self.data_frame['sentence'][idx],
+            'label': self.data_frame['label'][idx],
         }
 
 
@@ -61,7 +56,6 @@ def main():
     parser.add_argument('--seed', default=4885, type=int)
 
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # should be bert-xxx
-    parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--batch_max_size', default=32, type=int)
     parser.add_argument('--epochs', default=5, type=int)
     parser.add_argument('--lr', default=1e-5, type=float)
@@ -80,7 +74,6 @@ def main():
 
     # Hyper parameter --
     model_name = args.model_name
-    seq_max_length = args.seq_max_length
     batch_max_size = args.batch_max_size
     epochs = args.epochs
     learning_rate = args.lr
@@ -96,13 +89,22 @@ def main():
     df_test = pd.read_csv('./glue_sst2_dev.tsv', delimiter='\t')
     dataset_num_labels = 2
 
-    train_dataset = GlueSst2Dataset(df_train, tokenizer, seq_max_length)
-    validation_dataset = GlueSst2Dataset(df_val, tokenizer, seq_max_length)
-    test_dataset = GlueSst2Dataset(df_test, tokenizer, seq_max_length)
+    train_dataset = GlueSst2Dataset(df_train)
+    validation_dataset = GlueSst2Dataset(df_val)
+    test_dataset = GlueSst2Dataset(df_test)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size)
-    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size)
+    def collate_fn(batch):
+        batch = pd.DataFrame(batch)
+        tokenized = tokenizer(batch['sentence'].tolist(), padding=True, truncation=True, return_tensors="pt")
+
+        return {
+            **tokenized,
+            'labels': torch.tensor(batch['label'])
+        }
+
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
+    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
 
     model = BertForClassification(model_name, dataset_num_labels)
     optimizer = Adam(model.parameters(), lr=learning_rate)

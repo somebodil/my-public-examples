@@ -114,22 +114,16 @@ class MT5ForFurtherTrain(nn.Module):
 
 
 class UnsupervisedSimCseDataset(Dataset):
-    def __init__(self, data_frame, tokenizer, max_length, column_name='sentence'):
+    def __init__(self, data_frame):
         self.len = len(data_frame)
         self.data_frame = data_frame
-        self.tokenizer = tokenizer
-        self.max_length = max_length
-        self.column_name = column_name
 
     def __len__(self):
         return self.len
 
     def __getitem__(self, idx):
-        encodings = self.tokenizer(self.data_frame[self.column_name][idx], padding='max_length', max_length=self.max_length, truncation=True, return_tensors="pt")
-
         return {
-            "input_ids": encodings['input_ids'].squeeze(0),
-            "attention_mask": encodings['attention_mask'].squeeze(0),
+            'sentence': self.data_frame['sentence'][idx]
         }
 
 
@@ -155,13 +149,12 @@ def main():
     parser.add_argument('--seed', default=4885, type=int)
 
     parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
-    parser.add_argument('--seq_max_length', default=128, type=int)
     parser.add_argument('--batch_max_size', default=12, type=int)
     parser.add_argument('--epochs', default=1, type=int)
     parser.add_argument('--lr', default=1e-3, type=float)
 
-    parser.add_argument('--task', default='unsup_simcse', type=str)
-    parser.add_argument('--model_state_name', default='model_state.pt', type=str)  # for unsup_simcse - should exist, for other tasks - if model_state.pt exist, model_name will be ignored
+    parser.add_argument('--task', default='klue_sts', type=str)
+    parser.add_argument('--model_state_name', default='', type=str)  # for unsup_simcse - should exist, for other tasks - if model_state.pt exist, model_name will be ignored
 
     parser.add_argument('--temperature', default=0.05, type=float)
     parser.add_argument('--pretrain_dataset', default='kowikitext_20200920.train', type=str)  # for pretrained task
@@ -180,7 +173,6 @@ def main():
 
     # Hyper parameter --
     model_name = args.model_name
-    seq_max_length = args.seq_max_length
     batch_max_size = args.batch_max_size
     epochs = args.epochs
     learning_rate = args.lr
@@ -205,26 +197,18 @@ def main():
         optimizer = Adam(model.parameters(), lr=learning_rate)
         criterion = nn.MSELoss()
 
-        def format_input(examples):
-            encoded = tokenizer(examples['sentence1'], examples['sentence2'], max_length=seq_max_length, truncation=True, padding='max_length')
-            return encoded
+        def collate_fn(batch):
+            batch = pd.DataFrame(batch)
+            tokenized = tokenizer(batch['sentence1'].tolist(), batch['sentence2'].tolist(), padding=True, truncation=True, return_tensors="pt")
 
-        def format_target(example):
-            return {'labels': example['labels']['label']}
+            return {
+                **tokenized,
+                'labels': torch.tensor(batch['labels.label'], dtype=torch.float32)
+            }
 
-        def preprocess_dataset(dataset):
-            dataset = dataset.map(format_input, batched=True)
-            dataset = dataset.map(format_target)
-            dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
-            return dataset
-
-        train_dataset = preprocess_dataset(train_dataset)
-        validation_dataset = preprocess_dataset(validation_dataset)
-        test_dataset = preprocess_dataset(test_dataset)
-
-        train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size)
-        validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size)
-        test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size)
+        train_dataloader = DataLoader(train_dataset.flatten(), batch_size=batch_max_size, collate_fn=collate_fn)
+        validation_dataloader = DataLoader(validation_dataset.flatten(), batch_size=batch_max_size, collate_fn=collate_fn)
+        test_dataloader = DataLoader(test_dataset.flatten(), batch_size=batch_max_size, collate_fn=collate_fn)
 
         def loss_fn(predicts, batch, batch_size):
             return criterion(predicts, batch['labels'])
@@ -255,7 +239,7 @@ def main():
             loss_fn,
             optimizer,
             after_each_step_fn=after_each_step_fn,
-            disable_tqdm=True
+            disable_tqdm=False
         )
 
         test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn, disable_tqdm=True)
@@ -278,26 +262,18 @@ def main():
         criterion = nn.CrossEntropyLoss()
         optimizer = Adam(model.parameters(), lr=learning_rate)
 
-        def format_input(examples):
-            encoded = tokenizer(examples['premise'], examples['hypothesis'], max_length=seq_max_length, truncation=True, padding='max_length')
-            return encoded
+        def collate_fn(batch):
+            batch = pd.DataFrame(batch)
+            tokenized = tokenizer(batch['premise'].tolist(), batch['hypothesis'].tolist(), padding=True, truncation=True, return_tensors="pt")
 
-        def format_target(example):
-            return {'labels': example['label']}
+            return {
+                **tokenized,
+                'labels': torch.tensor(batch['label'])
+            }
 
-        def preprocess_dataset(dataset):
-            dataset = dataset.map(format_input, batched=True)
-            dataset = dataset.map(format_target)
-            dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
-            return dataset
-
-        train_dataset = preprocess_dataset(train_dataset)
-        validation_dataset = preprocess_dataset(validation_dataset)
-        test_dataset = preprocess_dataset(test_dataset)
-
-        train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size)
-        validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size)
-        test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size)
+        train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
+        validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
 
         def loss_fn(predicts, batch, batch_size):
             return criterion(predicts, batch['labels'])
@@ -349,18 +325,24 @@ def main():
             df_train = pd.DataFrame(lines, columns=['sentence'])
 
         tokenizer = T5Tokenizer.from_pretrained(model_name)
-        train_dataset = UnsupervisedSimCseDataset(df_train, tokenizer, seq_max_length)
-        train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size)
+        train_dataset = UnsupervisedSimCseDataset(df_train)
+
+        def collate_fn(batch):
+            batch = pd.DataFrame(batch)
+            tokenized = tokenizer(batch['sentence'].tolist(), padding=True, truncation=True, return_tensors="pt")
+            return tokenized
+
+        train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
         model = MT5ForFurtherTrain(model_name, temperature)
         optimizer = Adam(model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
 
         def loss_fn(predicts, batch, batch_size):
-            labels = torch.arange(batch_size).long().to(device)  # [1,2,3,4,5]
+            labels = torch.arange(batch_size).long().to(device)  # ex) [1,2,3,4,5, ...]
             return criterion(predicts, labels)
 
         def after_each_step_fn(train_callback_args):
-            if train_callback_args.is_step_interval(10):
+            if train_callback_args.is_step_interval(30) or train_callback_args.is_end_of_train():
                 save_model_config(f'checkpoint/{model_state_name}', model_name, train_callback_args.best_model.mt5.state_dict(), train_callback_args.best_model.config.to_dict())
                 logger.info(f'Saved model config at step {train_callback_args.get_cumulated_step()}')
 
