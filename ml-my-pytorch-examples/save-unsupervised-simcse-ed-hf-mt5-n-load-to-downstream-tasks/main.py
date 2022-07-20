@@ -16,7 +16,7 @@ from transformers import set_seed, T5Tokenizer, MT5Config, MT5EncoderModel
 
 from util import train_model, evaluate_model
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 

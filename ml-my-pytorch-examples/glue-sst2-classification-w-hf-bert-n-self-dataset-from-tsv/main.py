@@ -13,7 +13,7 @@ from transformers import BertModel, set_seed, BertTokenizer, BertConfig
 
 from util import train_model, evaluate_model
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 

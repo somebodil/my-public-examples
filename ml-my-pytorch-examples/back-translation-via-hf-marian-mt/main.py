@@ -2,7 +2,7 @@ import logging
 
 from transformers import MarianMTModel, MarianTokenizer
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
