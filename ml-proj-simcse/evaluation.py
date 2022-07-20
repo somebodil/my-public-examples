@@ -55,8 +55,6 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
-    print(model.encoder.layer[0].attention.self.query.weight) # FIXME remove
-
     # Set up the tasks
     if args.task_set == 'sts':
         args.tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']
@@ -146,7 +144,6 @@ def main():
         se = senteval.engine.SE(params, batcher, prepare)
         result = se.eval(task)
         results[task] = result
-        print(model.encoder.layer[0].attention.self.query.weight)  # FIXME remove
     
     # Print evaluation results
     if args.mode == 'dev':
