@@ -143,6 +143,7 @@ def main():
     for task in args.tasks:
         se = senteval.engine.SE(params, batcher, prepare)
         result = se.eval(task)
+        logging.info(result)
         results[task] = result
     
     # Print evaluation results
