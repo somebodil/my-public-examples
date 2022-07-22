@@ -54,13 +54,12 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-
+    
     # Set up the tasks
     if args.task_set == 'sts':
         args.tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']
     elif args.task_set == 'transfer':
-        # args.tasks = ['MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'TREC', 'MRPC']
-        args.tasks = ['MR']
+        args.tasks = ['MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'TREC', 'MRPC']
     elif args.task_set == 'full':
         args.tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']
         args.tasks += ['MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'TREC', 'MRPC']
@@ -143,7 +142,6 @@ def main():
     for task in args.tasks:
         se = senteval.engine.SE(params, batcher, prepare)
         result = se.eval(task)
-        logging.info(result)
         results[task] = result
     
     # Print evaluation results
