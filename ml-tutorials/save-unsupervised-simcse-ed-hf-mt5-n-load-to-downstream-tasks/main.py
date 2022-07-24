@@ -46,8 +46,7 @@ class Mt5ForRegression(nn.Module):
         mt5_out = self.mt5(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)[0]
         pooler_out = torch.mean(mt5_out, dim=1)
         linear_out = self.linear(pooler_out)
-        sigmoid_out = self.sigmoid(linear_out) * 5
-        return sigmoid_out.squeeze()
+        return linear_out.squeeze(1)
 
 
 class Mt5ForClassification(nn.Module):
@@ -150,7 +149,7 @@ def main():
 
     parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
     parser.add_argument('--batch_max_size', default=12, type=int)
-    parser.add_argument('--epochs', default=1, type=int)
+    parser.add_argument('--epochs', default=10, type=int)
     parser.add_argument('--lr', default=1e-3, type=float)
 
     parser.add_argument('--task', default='klue_sts', type=str)

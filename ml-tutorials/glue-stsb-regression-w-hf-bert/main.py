@@ -25,13 +25,11 @@ class BertForRegression(nn.Module):
         self.hidden_size = BertConfig.from_pretrained(bert_model_name).hidden_size
         self.bert = BertModel.from_pretrained(bert_model_name)
         self.linear = nn.Linear(in_features=self.hidden_size, out_features=num_labels)
-        self.sigmoid = nn.Sigmoid()
 
     def forward(self, input_ids, attention_mask, token_type_ids, **kwargs):
-        _, bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, return_dict=False)
-        linear_out = self.linear(bert_out)
-        sigmoid_out = self.sigmoid(linear_out) * 5
-        return sigmoid_out.squeeze()
+        _, pooler_out = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, return_dict=False)
+        linear_out = self.linear(pooler_out)
+        return linear_out.squeeze(1)
 
 
 def main():
@@ -44,7 +42,7 @@ def main():
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
     parser.add_argument('--batch_max_size', default=32, type=int)
     parser.add_argument('--epochs', default=10, type=int)
-    parser.add_argument('--lr', default=1e-5, type=float)
+    parser.add_argument('--lr', default=1e-4, type=float)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
