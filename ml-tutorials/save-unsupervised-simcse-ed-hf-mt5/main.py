@@ -132,7 +132,7 @@ def main():
 
     parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
     parser.add_argument('--batch_max_size', default=12, type=int)
-    parser.add_argument('--epochs', default=1, type=int)
+    parser.add_argument('--epochs', default=3, type=int)
     parser.add_argument('--lr', default=1e-4, type=float)
 
     parser.add_argument('--model_state_name', default='mt5-small-model-state.pt', type=str)
@@ -164,6 +164,12 @@ def main():
     pretrain_dataset = args.pretrain_dataset
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
+    model = MT5ForFurtherTrain(model_name, temperature)
+    max_length = model.config.max_length
+    optimizer = Adam(model.parameters(), lr=learning_rate)
+    criterion = nn.CrossEntropyLoss()
+    tokenizer = T5Tokenizer.from_pretrained(model_name)
+
     with open(f"dataset/{pretrain_dataset}", encoding='utf8') as f:
         lines = []
         for line in f:
@@ -173,36 +179,63 @@ def main():
 
         df_train = pd.DataFrame(lines, columns=['sentence'])
 
-    tokenizer = T5Tokenizer.from_pretrained(model_name)
     train_dataset = UnsupervisedSimCseDataset(df_train)
-    validation_dataset = load_dataset('glue', 'stsb', split="validation")
+    validation_dataset_glue = load_dataset('glue', 'stsb', split="validation")
+    validation_dataset_klue = load_dataset('klue', 'sts', split="validation").flatten()
 
     def train_dataloader_collate_fn(batch):
         batch = pd.DataFrame(batch)
-        tokenized = tokenizer(batch['sentence'].tolist(), padding=True, truncation=True, return_tensors="pt")
+        tokenized = tokenizer(
+            batch['sentence'].tolist(),
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+            return_tensors="pt"
+        )
+
         return tokenized
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size, collate_fn=train_dataloader_collate_fn)
 
-    def validation_dataloader_collate_fn(batch):
+    def validation_dataloader_collate_fn(batch, is_glue):  # if is_glue true then glue, else klue
         batch = pd.DataFrame(batch)
-        tokenized_sentence1 = tokenizer(batch['sentence1'].tolist(), padding=True, truncation=True, return_tensors="pt")
-        tokenized_sentence2 = tokenizer(batch['sentence2'].tolist(), padding=True, truncation=True, return_tensors="pt")
+        tokenized_sentence1 = tokenizer(
+            batch['sentence1'].tolist(),
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+            return_tensors="pt"
+        )
+
+        tokenized_sentence2 = tokenizer(
+            batch['sentence2'].tolist(),
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+            return_tensors="pt"
+        )
+
+        labels = batch['label'] if is_glue else batch['labels.label']
 
         return {
             'input_ids_1': tokenized_sentence1['input_ids'],
             'attention_mask_1': tokenized_sentence1['attention_mask'],
             'input_ids_2': tokenized_sentence2['input_ids'],
             'attention_mask_2': tokenized_sentence2['attention_mask'],
-            'labels': torch.tensor(batch['label'], dtype=torch.float32)
+            'labels': torch.tensor(labels, dtype=torch.float32)
         }
 
-    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size,
-                                       collate_fn=validation_dataloader_collate_fn)
+    validation_dataloader_glue = DataLoader(
+        validation_dataset_glue,
+        batch_size=batch_max_size,
+        collate_fn=lambda batch: validation_dataloader_collate_fn(batch, True)
+    )
 
-    model = MT5ForFurtherTrain(model_name, temperature)
-    optimizer = Adam(model.parameters(), lr=learning_rate)
-    criterion = nn.CrossEntropyLoss()
+    validation_dataloader_klue = DataLoader(
+        validation_dataset_klue,
+        batch_size=batch_max_size,
+        collate_fn=lambda batch: validation_dataloader_collate_fn(batch, False)
+    )
 
     def loss_fn(predicts, batch, batch_size):
         labels = torch.arange(batch_size).long().to(device)  # ex) [1,2,3,4,5, ...]
@@ -212,49 +245,45 @@ def main():
         return spearmanr(predicts, labels)[0]
 
     def after_each_step_fn(train_callback_args):
-        if train_callback_args.is_step_interval(250):
-            logger.debug(f"train loss for {train_callback_args.step} step: {train_callback_args.train_loss}")
+        if train_callback_args.is_start_of_train() \
+                or train_callback_args.is_step_interval(250) \
+                or train_callback_args.is_end_of_train():
+            _, acc_step = train_callback_args.get_epoch_step()
+            train_callback_args.get_train_score_args()
 
             mt5 = train_callback_args.model.mt5
             config = train_callback_args.model.config
             model = MT5ForValidationOnStsb(None, mt5.state_dict(), config.to_dict())
 
-            val_loss, val_score = evaluate_model(
+            _, glue_val_score = evaluate_model(
                 device,
-                validation_dataloader,
+                validation_dataloader_glue,
                 model,
                 score_fn,
                 disable_tqdm=True
             )
 
-            if train_callback_args.is_greater_than_best_val_score(val_score):
-                train_callback_args.set_best_val_args(val_loss, val_score)
-
-            logger.debug(
-                f'Epoch {train_callback_args.epoch} train loss, val score: '
-                f'[{train_callback_args.train_loss:.2}, {val_score:.2}]'
+            _, klue_val_score = evaluate_model(
+                device,
+                validation_dataloader_klue,
+                model,
+                score_fn,
+                disable_tqdm=True
             )
 
-            train_callback_args.clear_train_score_args()
+            logger.debug(f'Step {acc_step} glue klue val score: [{glue_val_score:.2}. {klue_val_score:.2}]')
 
-        elif train_callback_args.is_end_of_train():
-            save_model_config(
-                f'checkpoint/{model_state_name}',
-                model_name,
-                train_callback_args.best_model.mt5.state_dict(),
-                train_callback_args.best_model.config.to_dict()
-            )
-
-    train_model(
+    model, _, _, _ = train_model(
         epochs,
         device,
         train_dataloader,
         model,
         loss_fn,
         optimizer,
-        after_each_step_fn=after_each_step_fn,
-        disable_tqdm=True
+        after_each_step_fn=after_each_step_fn
     )
+
+    save_model_config(f'checkpoint/{model_state_name}', model_name, model.mt5.state_dict(), model.config.to_dict())
 
 
 if __name__ == "__main__":

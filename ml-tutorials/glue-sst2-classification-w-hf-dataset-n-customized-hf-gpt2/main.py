@@ -304,14 +304,13 @@ def main():
 
     def after_each_step_fn(train_callback_args):
         if train_callback_args.is_end_of_epoch():
-            train_score = 0
-            for i in range(train_callback_args.train_num_batches):
-                train_score += score_fn(
-                    train_callback_args.train_predicts[i],
-                    train_callback_args.train_batches[i]['labels']
-                )
+            train_epoch, _ = train_callback_args.get_epoch_step()
+            train_loss, train_num_batches, train_predicts, train_batches, train_batch_sizes = train_callback_args.get_train_score_args()
 
-            train_score /= train_callback_args.train_num_batches
+            train_score = 0
+            for i in range(train_num_batches):
+                train_score += score_fn(train_predicts[i], train_batches[i]['labels'])
+            train_score /= train_num_batches
 
             val_loss, val_score = evaluate_model(
                 device,
@@ -323,14 +322,12 @@ def main():
             )
 
             if train_callback_args.is_greater_than_best_val_score(val_score):
-                train_callback_args.set_best_val_args(val_loss, val_score)
+                train_callback_args.set_best_val_args(val_score, val_loss)
 
             logger.debug(
-                f'Epoch {train_callback_args.epoch} train loss, train score, val loss, val score: '
-                f'[{train_callback_args.train_loss:.2}, {train_score:.2}, {val_loss:.2}, {val_score:.2}]'
+                f'Epoch {train_epoch} train loss, train score, val loss, val score: '
+                f'[{train_loss:.2}, {train_score:.2}, {val_loss:.2}, {val_score:.2}]'
             )
-
-            train_callback_args.clear_train_score_args()
 
     model, best_val_epoch, best_val_loss, best_val_score = train_model(
         epochs,

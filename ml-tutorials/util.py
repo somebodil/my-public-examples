@@ -36,20 +36,34 @@ class TrainCallbackArgs:
         self.train_batches.append({k: v.clone().detach().cpu() for k, v in input_batch.items()})
         self.train_batch_sizes.append(input_batch_sizes)
 
-    def set_best_val_args(self, loss, score):
+    def set_best_val_args(self, score, loss=0.0):
         self.best_val_loss = loss
         self.best_val_score = score
         self.best_val_epoch = self.epoch
         self.best_model = copy.deepcopy(self.model).cpu()
 
-    def clear_train_score_args(self):
+    def get_train_score_args(self):
+        train_loss = self.train_loss
+        train_num_batches = self.train_num_batches
+        train_predicts = self.train_predicts
+        train_batches = self.train_batches
+        train_batch_sizes = self.train_batch_sizes
+
         self.train_loss = 0.0
         self.train_num_batches = 0
         self.train_predicts = []
         self.train_batches = []
         self.train_batch_sizes = []
 
-    def get_cumulated_step(self):
+        return train_loss, train_num_batches, train_predicts, train_batches, train_batch_sizes
+
+    def get_best_val_args(self):
+        return self.best_model, self.best_val_epoch, self.best_val_loss, self.best_val_score
+
+    def get_epoch_step(self):
+        return self.epoch, self.get_accumulated_step()
+
+    def get_accumulated_step(self):
         return self.step + self.step_of_epoch * (self.epoch - 1)
 
     def is_end_of_epoch(self):
@@ -65,7 +79,7 @@ class TrainCallbackArgs:
         return self.best_val_score < score
 
     def is_step_interval(self, interval):
-        return self.get_cumulated_step() % interval == 0
+        return self.get_accumulated_step() % interval == 0
 
 
 def train_model(
@@ -80,7 +94,7 @@ def train_model(
     """
     Callback function after_each_step_fn is always called after every each step.
     Batch size is calculated using first column of input batch.
-    Developer should not forget to call clear_train_score_args manually, or memory will explode.
+    Developer should not forget to call get_train_score_args manually, or memory will explode.
     """
 
     model.to(device)
@@ -106,7 +120,7 @@ def train_model(
                     train_callback_args.set_train_score_args(step, epoch, loss, predict, batch, batch_size)
                     after_each_step_fn(train_callback_args)
 
-    return train_callback_args.best_model, train_callback_args.best_val_epoch, train_callback_args.best_val_loss, train_callback_args.best_val_score
+    return train_callback_args.get_best_val_args()
 
 
 def evaluate_model(device, dataloader, model, score_fn, loss_fn=None, disable_tqdm=False):

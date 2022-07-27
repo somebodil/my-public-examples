@@ -100,7 +100,17 @@ def main():
     sw = stopwords.words('english')
 
     def split_tweet_into_tokens(row):
-        tokenized_row = [ss.stem(i) for i in re.split(r" +", re.sub(r"[^a-z@# ]", "", row['tweet'].lower())) if (i not in sw) and len(i)]
+        tokenized_row = [
+            ss.stem(i) for i in re.split(
+                r" +",
+                re.sub(
+                    r"[^a-z@# ]",
+                    "",
+                    row['tweet'].lower()
+                )
+            ) if (i not in sw) and len(i)
+        ]
+
         row['all_tokens'] = tokenized_row
         return row
 
@@ -147,7 +157,7 @@ def main():
         return criterion(predicts, batch['labels'])
 
     def after_each_step_fn(train_callback_args):
-        train_callback_args.clear_train_score_args()
+        train_callback_args.get_train_score_args()
         if train_callback_args.is_start_of_train() or train_callback_args.is_end_of_train():
             def get_k_similar_words(w, dm, k=10):
                 idx = tok2id[w]

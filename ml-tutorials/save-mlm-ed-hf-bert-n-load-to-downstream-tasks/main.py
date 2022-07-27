@@ -136,7 +136,7 @@ def pretrain_main(model_save_path):
         batch = pd.DataFrame(batch)
 
         answer_texts = [' '.join(sentence_list) for sentence_list in batch["answers.text"].tolist()]
-        encodings = tokenizer(answer_texts, truncation=True, padding=True, return_tensors='pt')
+        encodings = tokenizer(answer_texts, padding=True, truncation=True, return_tensors='pt')
         encodings["labels"] = encodings["input_ids"].clone()
 
         for i, input_ids in enumerate(encodings['input_ids']):
@@ -159,21 +159,18 @@ def pretrain_main(model_save_path):
 
     def after_each_step_fn(train_callback_args):
         if train_callback_args.is_end_of_epoch():
+            train_epoch, _ = train_callback_args.get_epoch_step()
+            train_loss, train_num_batches, train_predicts, train_batches, train_batch_sizes = train_callback_args.get_train_score_args()
+
             train_score = 0
-            for i in range(train_callback_args.train_num_batches):
+            for i in range(train_num_batches):
                 train_score += score_fn(
-                    train_callback_args.train_predicts[i][train_callback_args.train_batches[i]['masked_arr']],
-                    train_callback_args.train_batches[i]['labels'][train_callback_args.train_batches[i]['masked_arr']]
+                    train_predicts[i][train_batches[i]['masked_arr']],
+                    train_batches[i]['labels'][train_batches[i]['masked_arr']]
                 )
+            train_score /= train_num_batches
 
-            train_score /= train_callback_args.train_num_batches
-
-            logger.debug(
-                f'Epoch {train_callback_args.epoch} train loss, train score: '
-                f'[{train_callback_args.train_loss:.2}, {train_score:.2}]'
-            )
-
-            train_callback_args.clear_train_score_args()
+            logger.debug(f'Epoch {train_epoch} train loss, train score: [{train_loss:.2}, {train_score:.2}]')
 
             save_model_config(
                 model_save_path,
