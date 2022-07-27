@@ -44,7 +44,7 @@ class TrainCallbackArgs:
         self.best_val_acc_step = self.get_accumulated_step()
         self.best_model = copy.deepcopy(self.model).cpu()
 
-    def get_train_score_args(self):
+    def get_n_clear_train_args(self):
         train_loss = self.train_loss
         train_num_batches = self.train_num_batches
         train_predicts = self.train_predicts
@@ -96,7 +96,7 @@ def train_model(
     """
     Callback function after_each_step_fn is always called after every each step.
     Batch size is calculated using first column of input batch.
-    Developer should not forget to call get_train_score_args manually, or memory will explode.
+    Developer should not forget to call get_n_clear_train_args manually, or memory will explode.
     """
 
     model.to(device)

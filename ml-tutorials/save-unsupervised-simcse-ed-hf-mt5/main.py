@@ -249,7 +249,7 @@ def main():
                 or train_callback_args.is_step_interval(250) \
                 or train_callback_args.is_end_of_train():
             _, acc_step = train_callback_args.get_epoch_step()
-            train_callback_args.get_train_score_args()
+            train_callback_args.get_n_clear_train_args()
 
             mt5 = train_callback_args.model.mt5
             config = train_callback_args.model.config

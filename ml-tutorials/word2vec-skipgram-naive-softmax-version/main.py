@@ -157,7 +157,7 @@ def main():
         return criterion(predicts, batch['labels'])
 
     def after_each_step_fn(train_callback_args):
-        train_callback_args.get_train_score_args()
+        train_callback_args.get_n_clear_train_args()
         if train_callback_args.is_start_of_train() or train_callback_args.is_end_of_train():
             def get_k_similar_words(w, dm, k=10):
                 idx = tok2id[w]

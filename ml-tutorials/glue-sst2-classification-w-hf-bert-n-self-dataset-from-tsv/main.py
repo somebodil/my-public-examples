@@ -119,7 +119,7 @@ def main():
     def after_each_step_fn(train_callback_args):
         if train_callback_args.is_end_of_epoch():
             train_epoch, _ = train_callback_args.get_epoch_step()
-            train_loss, train_num_batches, train_predicts, train_batches, train_batch_sizes = train_callback_args.get_train_score_args()
+            train_loss, train_num_batches, train_predicts, train_batches, train_batch_sizes = train_callback_args.get_n_clear_train_args()
 
             train_score = 0
             for i in range(train_num_batches):
