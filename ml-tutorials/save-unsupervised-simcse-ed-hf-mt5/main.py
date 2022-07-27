@@ -29,7 +29,7 @@ def encode(cls, input_ids, attention_mask, **kwargs):
         pooler_out.append(torch.mean(mt5_out[i, 0:last_indices[i]], dim=0))
 
     pooler_out = torch.stack(pooler_out, dim=0)
-    return pooler_out
+    return pooler_out.type(torch.float64)  # To prevent Cosine similarity returning nan because of overflow
 
 
 class MT5ForValidationOnStsb(nn.Module):
@@ -37,22 +37,17 @@ class MT5ForValidationOnStsb(nn.Module):
     MT5Pooler, to create sentence representation, uses default dropout rate = 0.1
     """
 
-    def __init__(self, model_name, state_dict=None, config_dict=None):
+    def __init__(self, state_dict, config_dict):
         super(MT5ForValidationOnStsb, self).__init__()
-        if model_name is None:
-            if state_dict is None or config_dict is None:
-                raise ValueError("If model_name is None, state_dict and config must be specified.")
 
-            self.config = MT5Config.from_dict(config_dict)
-            self.mt5 = MT5EncoderModel(config=self.config)
-            self.mt5.load_state_dict(state_dict)
-
-        else:
-            if state_dict is not None or config_dict is not None:
-                raise ValueError("If model_name is not None, state_dict and config must be None.")
-
-            self.config = MT5Config.from_pretrained(model_name)
-            self.mt5 = MT5EncoderModel.from_pretrained(model_name)
+        config = MT5Config.from_dict(config_dict)
+        self.config = config
+        self.mt5 = MT5EncoderModel.from_pretrained(
+            pretrained_model_name_or_path=None,
+            torch_dtype=self.config.torch_dtype,
+            config=self.config,
+            state_dict=state_dict
+        )
 
         self.cosine_similarity = nn.CosineSimilarity(dim=-1)
 
@@ -67,8 +62,10 @@ class MT5ForFurtherTrain(nn.Module):
     def __init__(self, model_name, temperature):
         super(MT5ForFurtherTrain, self).__init__()
 
-        self.config = MT5Config.from_pretrained(model_name)  # uses default dropout rate = 0.1
-        self.mt5 = MT5EncoderModel.from_pretrained(model_name)
+        config = MT5Config.from_pretrained(model_name)  # uses default dropout rate = 0.1
+        config.torch_dtype = torch.float64
+        self.config = config
+        self.mt5 = MT5EncoderModel.from_pretrained(model_name, config=self.config, torch_dtype=self.config.torch_dtype)
 
         self.cosine_similarity = nn.CosineSimilarity(dim=-1)
         self.temperature = temperature
@@ -222,7 +219,7 @@ def main():
             'attention_mask_1': tokenized_sentence1['attention_mask'],
             'input_ids_2': tokenized_sentence2['input_ids'],
             'attention_mask_2': tokenized_sentence2['attention_mask'],
-            'labels': torch.tensor(labels, dtype=torch.float32)
+            'labels': torch.tensor(labels, dtype=torch.float64)
         }
 
     validation_dataloader_glue = DataLoader(
@@ -260,7 +257,7 @@ def main():
 
             mt5 = train_callback_args.model.mt5
             config = train_callback_args.model.config
-            model = MT5ForValidationOnStsb(None, mt5.state_dict(), config.to_dict())
+            model = MT5ForValidationOnStsb(mt5.state_dict(), config.to_dict())
 
             _, glue_val_score = evaluate_model(
                 device,

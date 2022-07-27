@@ -226,9 +226,9 @@ class Gpt2ForClassification(nn.Module):
     def __init__(self, gpt2_model_name, num_labels):
         super(Gpt2ForClassification, self).__init__()
 
-        self.hidden_size = GPT2Config.from_pretrained(gpt2_model_name).hidden_size
-        self.gpt2 = CustomGPT2Model.from_pretrained(gpt2_model_name)
-        self.linear = nn.Linear(in_features=self.hidden_size, out_features=num_labels)
+        self.config = GPT2Config.from_pretrained(gpt2_model_name)
+        self.gpt2 = CustomGPT2Model.from_pretrained(gpt2_model_name, config=self.config)
+        self.linear = nn.Linear(in_features=self.config.hidden_size, out_features=num_labels)
 
     def forward(self, input_ids, attention_mask, **kwargs):
         gpt2_out, _ = self.gpt2(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)

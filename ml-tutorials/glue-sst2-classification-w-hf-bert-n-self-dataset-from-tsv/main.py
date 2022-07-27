@@ -21,10 +21,9 @@ class BertForClassification(nn.Module):
     def __init__(self, bert_model_name, num_labels):
         super(BertForClassification, self).__init__()
 
-        self.hidden_size = BertConfig.from_pretrained(bert_model_name).hidden_size
-        self.bert = BertModel.from_pretrained(bert_model_name)
-        self.linear = nn.Linear(in_features=self.hidden_size,
-                                out_features=num_labels)
+        self.config = BertConfig.from_pretrained(bert_model_name)
+        self.bert = BertModel.from_pretrained(bert_model_name, config=self.config)
+        self.linear = nn.Linear(in_features=self.config.hidden_size, out_features=num_labels)
 
     def forward(self, input_ids, attention_mask, **kwargs):
         _, bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)

@@ -25,9 +25,8 @@ class BertForFurtherTrainByMLM(nn.Module):
         super(BertForFurtherTrainByMLM, self).__init__()
 
         self.config = BertConfig.from_pretrained(model_name)
-        hidden_size, vocab_size = self.config.hidden_size, self.config.vocab_size
-        self.bert = BertModel.from_pretrained(model_name)
-        self.linear = nn.Linear(in_features=hidden_size, out_features=vocab_size)
+        self.bert = BertModel.from_pretrained(model_name, config=self.config)
+        self.linear = nn.Linear(in_features=self.config.hidden_size, out_features=self.config.vocab_size)
 
     def forward(self, input_ids, attention_mask, token_type_ids, masked_arr, **kwargs):
         bert_out, _ = self.bert(
@@ -50,15 +49,20 @@ class BertForDownstreamTask(nn.Module):
                 raise ValueError("If model_name is None, state_dict and config must be specified.")
 
             self.config = BertConfig.from_dict(config_dict)
-            self.bert = BertModel(config=self.config)
-            self.bert.load_state_dict(state_dict)
+            self.bert = BertModel.from_pretrained(
+                pretrained_model_name_or_path=None,
+                config=self.config,
+                state_dict=state_dict
+            )
 
-        else:  # This 'else' block of code is not used in this project
+        else:
+            # This 'else' block of code is not used in this project, it's just for future reference.
+
             if state_dict is not None or config_dict is not None:
                 raise ValueError("If model_name is not None, state_dict and config must be None.")
 
             self.config = BertConfig.from_pretrained(model_name)
-            self.bert = BertModel.from_pretrained(model_name)
+            self.bert = BertModel.from_pretrained(model_name, config=self.config)
 
         self.linear = nn.Linear(in_features=self.config.hidden_size, out_features=num_labels)
 
@@ -97,7 +101,7 @@ def pretrain_main(model_save_path):
 
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
     parser.add_argument('--batch_max_size', default=4, type=int)
-    parser.add_argument('--epochs', default=30, type=int)
+    parser.add_argument('--epochs', default=10, type=int)
     parser.add_argument('--lr', default=1e-4, type=float)
 
     args = parser.parse_known_args()[0]
