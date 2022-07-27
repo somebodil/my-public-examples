@@ -274,7 +274,7 @@ def main():
             if train_callback_args.is_greater_than_best_val_score(glue_val_score + klue_val_score):
                 train_callback_args.set_best_val_args(glue_val_score + klue_val_score)
 
-            logger.debug(f'Step {acc_step} glue klue val score: [{glue_val_score:.2}. {klue_val_score:.2}]')
+            logger.debug(f'Step {acc_step} glue klue val score: [{glue_val_score:.2}, {klue_val_score:.2}]')
 
     model, _, best_val_acc_step, best_val_loss, best_val_score = train_model(
         epochs,
@@ -283,8 +283,7 @@ def main():
         model,
         loss_fn,
         optimizer,
-        after_each_step_fn=after_each_step_fn,
-        disable_tqdm=True
+        after_each_step_fn=after_each_step_fn
     )
 
     save_model_config(f'checkpoint/{model_state_name}', model_name, model.mt5.state_dict(), model.config.to_dict())
