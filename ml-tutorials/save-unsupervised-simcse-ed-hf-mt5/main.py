@@ -3,7 +3,6 @@ import logging
 import os
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 import torch
 from datasets import load_dataset
@@ -243,10 +242,12 @@ def main():
         return criterion(predicts, labels)
 
     def score_fn(predicts, labels):
-        score = spearmanr(predicts, labels)[0]
-        if score == np.nan:
+        try:
+            score = spearmanr(predicts, labels, nan_policy="raise")[0]
+        except ValueError:
             logger.debug(f"predicts : {predicts}")
             logger.debug(f"labels : {labels}")
+            raise ValueError("predicts and labels should be same length")
 
         return score
 
