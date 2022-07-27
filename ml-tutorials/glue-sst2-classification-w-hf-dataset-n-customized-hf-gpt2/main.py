@@ -329,7 +329,7 @@ def main():
                 f'[{train_loss:.2}, {train_score:.2}, {val_loss:.2}, {val_score:.2}]'
             )
 
-    model, best_val_epoch, best_val_loss, best_val_score = train_model(
+    model, best_val_epoch, best_val_acc_step, best_val_loss, best_val_score = train_model(
         epochs,
         device,
         train_dataloader,

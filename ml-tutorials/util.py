@@ -21,6 +21,7 @@ class TrainCallbackArgs:
         self.train_batch_sizes = []
 
         self.best_val_epoch = 0
+        self.best_val_acc_step = 0
         self.best_val_loss = 0.0
         self.best_val_score = 0.0
         self.best_model = model
@@ -40,6 +41,7 @@ class TrainCallbackArgs:
         self.best_val_loss = loss
         self.best_val_score = score
         self.best_val_epoch = self.epoch
+        self.best_val_acc_step = self.get_accumulated_step()
         self.best_model = copy.deepcopy(self.model).cpu()
 
     def get_train_score_args(self):
@@ -58,7 +60,7 @@ class TrainCallbackArgs:
         return train_loss, train_num_batches, train_predicts, train_batches, train_batch_sizes
 
     def get_best_val_args(self):
-        return self.best_model, self.best_val_epoch, self.best_val_loss, self.best_val_score
+        return self.best_model, self.best_val_epoch, self.best_val_acc_step, self.best_val_loss, self.best_val_score
 
     def get_epoch_step(self):
         return self.epoch, self.get_accumulated_step()

@@ -132,7 +132,7 @@ def main():
 
     parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
     parser.add_argument('--batch_max_size', default=12, type=int)
-    parser.add_argument('--epochs', default=3, type=int)
+    parser.add_argument('--epochs', default=1, type=int)
     parser.add_argument('--lr', default=1e-4, type=float)
 
     parser.add_argument('--model_state_name', default='mt5-small-model-state.pt', type=str)
@@ -271,19 +271,24 @@ def main():
                 disable_tqdm=True
             )
 
+            if train_callback_args.is_greater_than_best_val_score(glue_val_score + klue_val_score):
+                train_callback_args.set_best_val_args(glue_val_score + klue_val_score)
+
             logger.debug(f'Step {acc_step} glue klue val score: [{glue_val_score:.2}. {klue_val_score:.2}]')
 
-    model, _, _, _ = train_model(
+    model, _, best_val_acc_step, best_val_loss, best_val_score = train_model(
         epochs,
         device,
         train_dataloader,
         model,
         loss_fn,
         optimizer,
-        after_each_step_fn=after_each_step_fn
+        after_each_step_fn=after_each_step_fn,
+        disable_tqdm=True
     )
 
     save_model_config(f'checkpoint/{model_state_name}', model_name, model.mt5.state_dict(), model.config.to_dict())
+    logger.debug(f"Best (glue + klue) acc_step && score : ({best_val_acc_step}, {best_val_score})")
 
 
 if __name__ == "__main__":
