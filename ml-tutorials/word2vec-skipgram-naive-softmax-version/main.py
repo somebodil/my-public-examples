@@ -78,9 +78,9 @@ def main():
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
     setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
 
-    logger.info('[List of arguments]')
+    logger.debug('[List of arguments]')
     for a in args.__dict__:
-        logger.info(f'{a}: {args.__dict__[a]}')
+        logger.debug(f'{a}: {args.__dict__[a]}')
 
     # Device & Seed --
     device = args.device
@@ -162,7 +162,7 @@ def main():
             distance_matrix = distance.squareform(distance.pdist(word2vec_param, 'cosine'))
 
             for word in tokens:
-                logger.info(f'{word} {[t[1] for t in get_k_similar_words(word, distance_matrix)]}')
+                logger.debug(f'{word} {[t[1] for t in get_k_similar_words(word, distance_matrix)]}')
 
     train_model(
         epochs,

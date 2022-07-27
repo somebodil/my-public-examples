@@ -27,7 +27,13 @@ class BertForRegression(nn.Module):
         self.linear = nn.Linear(in_features=self.hidden_size, out_features=num_labels)
 
     def forward(self, input_ids, attention_mask, token_type_ids, **kwargs):
-        _, pooler_out = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, return_dict=False)
+        _, pooler_out = self.bert(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            return_dict=False
+        )
+
         linear_out = self.linear(pooler_out)
         return linear_out.squeeze(1)
 
@@ -48,9 +54,9 @@ def main():
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
     setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
 
-    logger.info('[List of arguments]')
+    logger.debug('[List of arguments]')
     for a in args.__dict__:
-        logger.info(f'{a}: {args.__dict__[a]}')
+        logger.debug(f'{a}: {args.__dict__[a]}')
 
     # Device & Seed --
     device = args.device
@@ -72,7 +78,13 @@ def main():
 
     def collate_fn(batch):
         batch = pd.DataFrame(batch)
-        tokenized = tokenizer(batch['sentence1'].tolist(), batch['sentence2'].tolist(), padding=True, truncation=True, return_tensors="pt")
+        tokenized = tokenizer(
+            batch['sentence1'].tolist(),
+            batch['sentence2'].tolist(),
+            padding=True,
+            truncation=True,
+            return_tensors="pt"
+        )
 
         return {
             **tokenized,
@@ -90,22 +102,37 @@ def main():
     def loss_fn(predicts, batch, batch_size):
         return criterion(predicts, batch['labels'])
 
-    def score_fn(pred, label):
-        return stats.pearsonr(pred, label)[0]
+    def score_fn(predicts, labels):
+        return stats.pearsonr(predicts, labels)[0]
 
     def after_each_step_fn(train_callback_args):
         if train_callback_args.is_end_of_epoch():
             train_score = 0
             for i in range(train_callback_args.train_num_batches):
-                train_score += score_fn(train_callback_args.train_predicts[i], train_callback_args.train_batches[i]['labels'])
+                train_score += score_fn(
+                    train_callback_args.train_predicts[i],
+                    train_callback_args.train_batches[i]['labels']
+                )
 
             train_score /= train_callback_args.train_num_batches
 
-            val_loss, val_score = evaluate_model(device, validation_dataloader, train_callback_args.model, loss_fn, score_fn, disable_tqdm=True)
+            val_loss, val_score = evaluate_model(
+                device,
+                validation_dataloader,
+                train_callback_args.model,
+                score_fn,
+                loss_fn=loss_fn,
+                disable_tqdm=True
+            )
+
             if train_callback_args.is_greater_than_best_val_score(val_score):
                 train_callback_args.set_best_val_args(val_loss, val_score)
 
-            logger.info(f'Epoch {train_callback_args.epoch} train loss, train score, val loss, val score: [{train_callback_args.train_loss:.2}, {train_score:.2}, {val_loss:.2}, {val_score:.2}]')
+            logger.debug(
+                f'Epoch {train_callback_args.epoch} train loss, train score, val loss, val score: '
+                f'[{train_callback_args.train_loss:.2}, {train_score:.2}, {val_loss:.2}, {val_score:.2}]'
+            )
+
             train_callback_args.clear_train_score_args()
 
     model, best_val_epoch, best_val_loss, best_val_score = train_model(
@@ -119,8 +146,19 @@ def main():
         disable_tqdm=True
     )
 
-    test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn, disable_tqdm=True)
-    logger.info(f"Test (loss, score) with best val model (epoch, loss, score) : ({test_loss:.2} / {test_score:.2}), ({best_val_epoch}, {best_val_loss:.2} / {best_val_score:.2})")
+    test_loss, test_score = evaluate_model(
+        device,
+        test_dataloader,
+        model,
+        score_fn,
+        loss_fn=loss_fn,
+        disable_tqdm=True
+    )
+
+    logger.debug(
+        f"Test (loss, score) with best val model (epoch, loss, score) : "
+        f"({test_loss:.2} / {test_score:.2}), ({best_val_epoch}, {best_val_loss:.2} / {best_val_score:.2})"
+    )
 
 
 if __name__ == '__main__':

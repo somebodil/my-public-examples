@@ -30,7 +30,13 @@ class BertForFurtherTrainByMLM(nn.Module):
         self.linear = nn.Linear(in_features=hidden_size, out_features=vocab_size)
 
     def forward(self, input_ids, attention_mask, token_type_ids, masked_arr, **kwargs):
-        bert_out, _ = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, return_dict=False)
+        bert_out, _ = self.bert(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            return_dict=False
+        )
+
         linear_out = self.linear(bert_out)
         return linear_out
 
@@ -57,7 +63,13 @@ class BertForDownstreamTask(nn.Module):
         self.linear = nn.Linear(in_features=self.config.hidden_size, out_features=num_labels)
 
     def forward(self, input_ids, attention_mask, token_type_ids, **kwargs):
-        bert_out, _ = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, return_dict=False)
+        bert_out, _ = self.bert(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            return_dict=False
+        )
+
         linear_out = self.linear(bert_out)
         return linear_out
 
@@ -86,15 +98,15 @@ def pretrain_main(model_save_path):
     parser.add_argument('--model_name', default='bert-base-cased', type=str)  # Should be bert base model
     parser.add_argument('--batch_max_size', default=4, type=int)
     parser.add_argument('--epochs', default=30, type=int)
-    parser.add_argument('--lr', default=3e-5, type=float)
+    parser.add_argument('--lr', default=1e-4, type=float)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
     setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
 
-    logger.info('[List of arguments]')
+    logger.debug('[List of arguments]')
     for a in args.__dict__:
-        logger.info(f'{a}: {args.__dict__[a]}')
+        logger.debug(f'{a}: {args.__dict__[a]}')
 
     # Device & Seed --
     device = args.device
@@ -142,22 +154,33 @@ def pretrain_main(model_save_path):
     def loss_fn(predicts, batch, batch_size):
         return criterion(predicts[batch['masked_arr']], batch['labels'][batch['masked_arr']]) / batch_size
 
-    def score_fn(pred, label):
-        return accuracy_score(label, np.argmax(pred, axis=-1))
+    def score_fn(predicts, labels):
+        return accuracy_score(labels, np.argmax(predicts, axis=-1))
 
     def after_each_step_fn(train_callback_args):
         if train_callback_args.is_end_of_epoch():
             train_score = 0
             for i in range(train_callback_args.train_num_batches):
-                train_score += score_fn(train_callback_args.train_predicts[i][train_callback_args.train_batches[i]['masked_arr']],
-                                        train_callback_args.train_batches[i]['labels'][train_callback_args.train_batches[i]['masked_arr']])
+                train_score += score_fn(
+                    train_callback_args.train_predicts[i][train_callback_args.train_batches[i]['masked_arr']],
+                    train_callback_args.train_batches[i]['labels'][train_callback_args.train_batches[i]['masked_arr']]
+                )
 
             train_score /= train_callback_args.train_num_batches
 
-            logger.info(f'Epoch {train_callback_args.epoch} train loss, train score: [{train_callback_args.train_loss:.2}, {train_score:.2}]')
+            logger.debug(
+                f'Epoch {train_callback_args.epoch} train loss, train score: '
+                f'[{train_callback_args.train_loss:.2}, {train_score:.2}]'
+            )
+
             train_callback_args.clear_train_score_args()
 
-            save_model_config(model_save_path, model_name, train_callback_args.best_model.bert.state_dict(), train_callback_args.best_model.config.to_dict())
+            save_model_config(
+                model_save_path,
+                model_name,
+                train_callback_args.best_model.bert.state_dict(),
+                train_callback_args.best_model.config.to_dict()
+            )
 
     train_model(
         epochs,
@@ -175,8 +198,8 @@ def use_pretrained_model_in_down_stream_task_main(model_save_path):
     model_name, model_state_dict, model_config_dict = load_model_config(model_save_path)
     model = BertForDownstreamTask(None, 1, model_state_dict, model_config_dict)
 
-    logger.info(model_name)  # Use this to load tokenizer and parse dataset
-    logger.info(model)  # Use this for downstream task
+    logger.debug(model_name)  # Use this to load tokenizer and parse dataset
+    logger.debug(model)  # Use this for downstream task
 
     # Need code for downstream task, but will not write here.
     # See other examples.

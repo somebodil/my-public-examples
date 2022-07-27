@@ -109,7 +109,7 @@ def train_model(
     return train_callback_args.best_model, train_callback_args.best_val_epoch, train_callback_args.best_val_loss, train_callback_args.best_val_score
 
 
-def evaluate_model(device, dataloader, model, loss_fn, score_fn, disable_tqdm=False):
+def evaluate_model(device, dataloader, model, score_fn, loss_fn=None, disable_tqdm=False):
     """
     Function always assumes input batch 'labels' column.
     Batch size is calculated using first column of input batch.
@@ -129,7 +129,7 @@ def evaluate_model(device, dataloader, model, loss_fn, score_fn, disable_tqdm=Fa
                 batch = {k: v.to(device) for k, v in batch.items()}
 
                 predict = model(**batch)
-                loss = loss_fn(predict, batch, batch_size)
+                loss = loss_fn(predict, batch, batch_size) if loss_fn is not None else torch.tensor(0.0)
 
                 eval_loss += loss.item()
                 eval_pred.extend(predict.tolist())

@@ -3,12 +3,10 @@ import logging
 import os
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 import torch
 from datasets import load_dataset
-from scipy import stats
-from sklearn.metrics import accuracy_score
+from scipy.stats import spearmanr
 from torch import nn
 from torch.optim import Adam
 from torch.utils.data import Dataset, DataLoader
@@ -20,10 +18,27 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-class Mt5ForRegression(nn.Module):
-    def __init__(self, model_name, num_labels, state_dict=None, config_dict=None):
-        super(Mt5ForRegression, self).__init__()
+def encode(cls, input_ids, attention_mask, **kwargs):
+    mt5_out = cls.mt5(input_ids, attention_mask)[0]
 
+    batch_size = mt5_out.shape[0]
+    last_indices = attention_mask.sum(dim=-1) - 1
+
+    pooler_out = []
+    for i in range(batch_size):
+        pooler_out.append(torch.mean(mt5_out[i, 0:last_indices[i]], dim=0))
+
+    pooler_out = torch.stack(pooler_out, dim=0)
+    return pooler_out
+
+
+class MT5ForValidationOnStsb(nn.Module):
+    """
+    MT5Pooler, to create sentence representation, uses default dropout rate = 0.1
+    """
+
+    def __init__(self, model_name, state_dict=None, config_dict=None):
+        super(MT5ForValidationOnStsb, self).__init__()
         if model_name is None:
             if state_dict is None or config_dict is None:
                 raise ValueError("If model_name is None, state_dict and config must be specified.")
@@ -39,42 +54,13 @@ class Mt5ForRegression(nn.Module):
             self.config = MT5Config.from_pretrained(model_name)
             self.mt5 = MT5EncoderModel.from_pretrained(model_name)
 
-        self.linear = nn.Linear(in_features=self.config.hidden_size, out_features=num_labels)
-        self.sigmoid = nn.Sigmoid()
+        self.cosine_similarity = nn.CosineSimilarity(dim=-1)
 
-    def forward(self, input_ids, attention_mask, **kwargs):
-        mt5_out = self.mt5(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)[0]
-        pooler_out = torch.mean(mt5_out, dim=1)
-        linear_out = self.linear(pooler_out)
-        return linear_out.squeeze(1)
-
-
-class Mt5ForClassification(nn.Module):
-    def __init__(self, model_name, num_labels, state_dict=None, config_dict=None):
-        super(Mt5ForClassification, self).__init__()
-
-        if model_name is None:
-            if state_dict is None or config_dict is None:
-                raise ValueError("If model_name is None, state_dict and config must be specified.")
-
-            self.config = MT5Config.from_dict(config_dict)
-            self.mt5 = MT5EncoderModel(config=self.config)
-            self.mt5.load_state_dict(state_dict)
-
-        else:
-            if state_dict is not None or config_dict is not None:
-                raise ValueError("If model_name is not None, state_dict and config must be None.")
-
-            self.config = MT5Config.from_pretrained(model_name)
-            self.mt5 = MT5EncoderModel.from_pretrained(model_name)
-
-        self.linear = nn.Linear(in_features=self.config.hidden_size, out_features=num_labels)
-
-    def forward(self, input_ids, attention_mask, **kwargs):
-        mt5_out = self.mt5(input_ids=input_ids, attention_mask=attention_mask, return_dict=False)[0]
-        pooler_out = torch.mean(mt5_out, dim=1)
-        linear_out = self.linear(pooler_out)
-        return linear_out.squeeze()
+    def forward(self, input_ids_1, attention_mask_1, input_ids_2, attention_mask_2, **kwargs):
+        embedding1 = encode(self, input_ids_1, attention_mask_1)
+        embedding2 = encode(self, input_ids_2, attention_mask_2)
+        cos_sim_out = self.cosine_similarity(embedding1, embedding2)
+        return cos_sim_out
 
 
 class MT5ForFurtherTrain(nn.Module):
@@ -99,16 +85,18 @@ class MT5ForFurtherTrain(nn.Module):
         attention_mask = attention_mask.view((-1, input_ids.shape[-1]))
 
         # encode => (batch_size * 2, hidden_size)
-        mt5_out = self.mt5(input_ids, attention_mask)[0]
-        pooler_out = torch.mean(mt5_out, dim=1)
+        pooler_out = encode(self, input_ids, attention_mask)
 
         # revert flat => (batch_size, 2, hidden_size)
         pooler_out = pooler_out.view((batch_size, 2, pooler_out.shape[-1]))
 
         # cos sim
-        z1, z2 = pooler_out[:, 0], pooler_out[:, 1]  # (batch_size, hidden_size)
-        cos_sim_out = self.cosine_similarity(z1.unsqueeze(1), z2.unsqueeze(0)) / self.temperature  # (batch_size, 1, hidden_size), (batch_size, hidden_size, 1)
+        # (batch_size, hidden_size)
+        z1, z2 = pooler_out[:, 0], pooler_out[:, 1]
 
+        # => (batch_size, 1, hidden_size), (batch_size, hidden_size, 1)
+        # => (batch_size, batch_size)
+        cos_sim_out = self.cosine_similarity(z1.unsqueeze(1), z2.unsqueeze(0)) / self.temperature
         return cos_sim_out
 
 
@@ -124,11 +112,6 @@ class UnsupervisedSimCseDataset(Dataset):
         return {
             'sentence': self.data_frame['sentence'][idx]
         }
-
-
-def load_model_config(path):
-    config = torch.load(path, map_location='cpu')
-    return config['model_name'], config['model_state_dict'], config['model_config_dict']
 
 
 def save_model_config(path, model_name, model_state_dict, model_config_dict):
@@ -149,11 +132,10 @@ def main():
 
     parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
     parser.add_argument('--batch_max_size', default=12, type=int)
-    parser.add_argument('--epochs', default=10, type=int)
-    parser.add_argument('--lr', default=1e-3, type=float)
+    parser.add_argument('--epochs', default=1, type=int)
+    parser.add_argument('--lr', default=1e-4, type=float)
 
-    parser.add_argument('--task', default='klue_sts', type=str)
-    parser.add_argument('--model_state_name', default='', type=str)  # for unsup_simcse - should exist, for other tasks - if model_state.pt exist, model_name will be ignored
+    parser.add_argument('--model_state_name', default='mt5-small-model-state.pt', type=str)
 
     parser.add_argument('--temperature', default=0.05, type=float)
     parser.add_argument('--pretrain_dataset', default='kowikitext_20200920.train', type=str)  # for pretrained task
@@ -162,9 +144,9 @@ def main():
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
     setattr(args, 'time', datetime.now().strftime('%Y%m%d-%H:%M:%S'))
 
-    logger.info('[List of arguments]')
+    logger.debug('[List of arguments]')
     for a in args.__dict__:
-        logger.info(f'{a}: {args.__dict__[a]}')
+        logger.debug(f'{a}: {args.__dict__[a]}')
 
     # Device & Seed --
     device = args.device
@@ -176,187 +158,103 @@ def main():
     epochs = args.epochs
     learning_rate = args.lr
 
-    task = args.task
     model_state_name = args.model_state_name
 
-    if task == "klue_sts":
-        # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
-        train_dataset = load_dataset('klue', 'sts', split="train[:100]")  # FIXME change back to train[:80%]
-        validation_dataset = load_dataset('klue', 'sts', split="train[-100:]")  # FIXME change back to train[-20%:]
-        test_dataset = load_dataset('klue', 'sts', split="validation")
-        data_labels_num = 1
+    temperature = args.temperature
+    pretrain_dataset = args.pretrain_dataset
 
-        if model_state_name:
-            model_name, model_state_dict, model_config_dict = load_model_config(f'checkpoint/{model_state_name}')
-            model = Mt5ForRegression(None, data_labels_num, model_state_dict, model_config_dict)
-        else:
-            model = Mt5ForRegression(model_name, data_labels_num)
+    # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
+    with open(f"dataset/{pretrain_dataset}", encoding='utf8') as f:
+        lines = []
+        for line in f:
+            line = line.strip()
+            if line:
+                lines.append(line)
 
-        tokenizer = T5Tokenizer.from_pretrained(model_name)
-        optimizer = Adam(model.parameters(), lr=learning_rate)
-        criterion = nn.MSELoss()
+        df_train = pd.DataFrame(lines, columns=['sentence'])
 
-        def collate_fn(batch):
-            batch = pd.DataFrame(batch)
-            tokenized = tokenizer(batch['sentence1'].tolist(), batch['sentence2'].tolist(), padding=True, truncation=True, return_tensors="pt")
+    tokenizer = T5Tokenizer.from_pretrained(model_name)
+    train_dataset = UnsupervisedSimCseDataset(df_train)
+    validation_dataset = load_dataset('glue', 'stsb', split="validation")
 
-            return {
-                **tokenized,
-                'labels': torch.tensor(batch['labels.label'], dtype=torch.float32)
-            }
+    def train_dataloader_collate_fn(batch):
+        batch = pd.DataFrame(batch)
+        tokenized = tokenizer(batch['sentence'].tolist(), padding=True, truncation=True, return_tensors="pt")
+        return tokenized
 
-        train_dataloader = DataLoader(train_dataset.flatten(), batch_size=batch_max_size, collate_fn=collate_fn)
-        validation_dataloader = DataLoader(validation_dataset.flatten(), batch_size=batch_max_size, collate_fn=collate_fn)
-        test_dataloader = DataLoader(test_dataset.flatten(), batch_size=batch_max_size, collate_fn=collate_fn)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size, collate_fn=train_dataloader_collate_fn)
 
-        def loss_fn(predicts, batch, batch_size):
-            return criterion(predicts, batch['labels'])
+    def validation_dataloader_collate_fn(batch):
+        batch = pd.DataFrame(batch)
+        tokenized_sentence1 = tokenizer(batch['sentence1'].tolist(), padding=True, truncation=True, return_tensors="pt")
+        tokenized_sentence2 = tokenizer(batch['sentence2'].tolist(), padding=True, truncation=True, return_tensors="pt")
 
-        def score_fn(pred, label):
-            return stats.pearsonr(pred, label)[0]
+        return {
+            'input_ids_1': tokenized_sentence1['input_ids'],
+            'attention_mask_1': tokenized_sentence1['attention_mask'],
+            'input_ids_2': tokenized_sentence2['input_ids'],
+            'attention_mask_2': tokenized_sentence2['attention_mask'],
+            'labels': torch.tensor(batch['label'], dtype=torch.float32)
+        }
 
-        def after_each_step_fn(train_callback_args):
-            if train_callback_args.is_end_of_epoch():
-                train_score = 0
-                for i in range(train_callback_args.train_num_batches):
-                    train_score += score_fn(train_callback_args.train_predicts[i], train_callback_args.train_batches[i]['labels'])
+    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size,
+                                       collate_fn=validation_dataloader_collate_fn)
 
-                train_score /= train_callback_args.train_num_batches
+    model = MT5ForFurtherTrain(model_name, temperature)
+    optimizer = Adam(model.parameters(), lr=learning_rate)
+    criterion = nn.CrossEntropyLoss()
 
-                val_loss, val_score = evaluate_model(device, validation_dataloader, train_callback_args.model, loss_fn, score_fn, disable_tqdm=True)
-                if train_callback_args.is_greater_than_best_val_score(val_score):
-                    train_callback_args.set_best_val_args(val_loss, val_score)
+    def loss_fn(predicts, batch, batch_size):
+        labels = torch.arange(batch_size).long().to(device)  # ex) [1,2,3,4,5, ...]
+        return criterion(predicts, labels)
 
-                logger.info(f'Epoch {train_callback_args.epoch} train loss, train score, val loss, val score: [{train_callback_args.train_loss:.2}, {train_score:.2}, {val_loss:.2}, {val_score:.2}]')
-                train_callback_args.clear_train_score_args()
+    def score_fn(predicts, labels):
+        return spearmanr(predicts, labels)[0]
 
-        model, best_val_epoch, best_val_loss, best_val_score = train_model(
-            epochs,
-            device,
-            train_dataloader,
-            model,
-            loss_fn,
-            optimizer,
-            after_each_step_fn=after_each_step_fn,
-            disable_tqdm=False
-        )
+    def after_each_step_fn(train_callback_args):
+        if train_callback_args.is_step_interval(250):
+            logger.debug(f"train loss for {train_callback_args.step} step: {train_callback_args.train_loss}")
 
-        test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn, disable_tqdm=True)
-        logger.info(f"Test (loss, score) with best val model (epoch, loss, score) : ({test_loss:.2} / {test_score:.2}), ({best_val_epoch}, {best_val_loss:.2} / {best_val_score:.2})")
+            mt5 = train_callback_args.model.mt5
+            config = train_callback_args.model.config
+            model = MT5ForValidationOnStsb(None, mt5.state_dict(), config.to_dict())
 
-    elif task == "klue_nli":
-        # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
-        train_dataset = load_dataset('klue', 'nli', split="train[:100]")  # FIXME change back to train[:80%]
-        validation_dataset = load_dataset('klue', 'nli', split="train[-100:]")  # FIXME change back to train[-20%:]
-        test_dataset = load_dataset('klue', 'nli', split="validation")
-        data_labels_num = 3
+            val_loss, val_score = evaluate_model(
+                device,
+                validation_dataloader,
+                model,
+                score_fn,
+                disable_tqdm=True
+            )
 
-        if model_state_name:
-            model_name, model_state_dict, model_config_dict = load_model_config(f'checkpoint/{model_state_name}')
-            model = Mt5ForClassification(None, data_labels_num, model_state_dict, model_config_dict)
-        else:
-            model = Mt5ForClassification(model_name, data_labels_num)
+            if train_callback_args.is_greater_than_best_val_score(val_score):
+                train_callback_args.set_best_val_args(val_loss, val_score)
 
-        tokenizer = T5Tokenizer.from_pretrained(model_name)
-        criterion = nn.CrossEntropyLoss()
-        optimizer = Adam(model.parameters(), lr=learning_rate)
+            logger.debug(
+                f'Epoch {train_callback_args.epoch} train loss, val score: '
+                f'[{train_callback_args.train_loss:.2}, {val_score:.2}]'
+            )
 
-        def collate_fn(batch):
-            batch = pd.DataFrame(batch)
-            tokenized = tokenizer(batch['premise'].tolist(), batch['hypothesis'].tolist(), padding=True, truncation=True, return_tensors="pt")
+            train_callback_args.clear_train_score_args()
 
-            return {
-                **tokenized,
-                'labels': torch.tensor(batch['label'])
-            }
+        elif train_callback_args.is_end_of_train():
+            save_model_config(
+                f'checkpoint/{model_state_name}',
+                model_name,
+                train_callback_args.best_model.mt5.state_dict(),
+                train_callback_args.best_model.config.to_dict()
+            )
 
-        train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
-        validation_dataloader = DataLoader(validation_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
-        test_dataloader = DataLoader(test_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
-
-        def loss_fn(predicts, batch, batch_size):
-            return criterion(predicts, batch['labels'])
-
-        def score_fn(pred, label):
-            return accuracy_score(label, np.argmax(pred, axis=1))
-
-        def after_each_step_fn(train_callback_args):
-            if train_callback_args.is_end_of_epoch():
-                train_score = 0
-                for i in range(train_callback_args.train_num_batches):
-                    train_score += score_fn(train_callback_args.train_predicts[i], train_callback_args.train_batches[i]['labels'])
-
-                train_score /= train_callback_args.train_num_batches
-
-                val_loss, val_score = evaluate_model(device, validation_dataloader, train_callback_args.model, loss_fn, score_fn, disable_tqdm=True)
-                if train_callback_args.is_greater_than_best_val_score(val_score):
-                    train_callback_args.set_best_val_args(val_loss, val_score)
-
-                logger.info(f'Epoch {train_callback_args.epoch} train loss, train score, val loss, val score: [{train_callback_args.train_loss:.2}, {train_score:.2}, {val_loss:.2}, {val_score:.2}]')
-                train_callback_args.clear_train_score_args()
-
-        model, best_val_epoch, best_val_loss, best_val_score = train_model(
-            epochs,
-            device,
-            train_dataloader,
-            model,
-            loss_fn,
-            optimizer,
-            after_each_step_fn=after_each_step_fn,
-            disable_tqdm=True
-        )
-
-        test_loss, test_score = evaluate_model(device, test_dataloader, model, loss_fn, score_fn, disable_tqdm=True)
-        logger.info(f"Test (loss, score) with best val model (epoch, loss, score) : ({test_loss:.2} / {test_score:.2}), ({best_val_epoch}, {best_val_loss:.2} / {best_val_score:.2})")
-
-    elif task == 'unsup_simcse':
-        # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
-        temperature = args.temperature
-        pretrain_dataset = args.pretrain_dataset
-
-        with open(f"dataset/{pretrain_dataset}", encoding='utf8') as f:
-            lines = []
-            for line in f:
-                line = line.strip()
-                if line:
-                    lines.append(line)
-
-            df_train = pd.DataFrame(lines, columns=['sentence'])
-
-        tokenizer = T5Tokenizer.from_pretrained(model_name)
-        train_dataset = UnsupervisedSimCseDataset(df_train)
-
-        def collate_fn(batch):
-            batch = pd.DataFrame(batch)
-            tokenized = tokenizer(batch['sentence'].tolist(), padding=True, truncation=True, return_tensors="pt")
-            return tokenized
-
-        train_dataloader = DataLoader(train_dataset, batch_size=batch_max_size, collate_fn=collate_fn)
-        model = MT5ForFurtherTrain(model_name, temperature)
-        optimizer = Adam(model.parameters(), lr=learning_rate)
-        criterion = nn.CrossEntropyLoss()
-
-        def loss_fn(predicts, batch, batch_size):
-            labels = torch.arange(batch_size).long().to(device)  # ex) [1,2,3,4,5, ...]
-            return criterion(predicts, labels)
-
-        def after_each_step_fn(train_callback_args):
-            if train_callback_args.is_step_interval(30) or train_callback_args.is_end_of_train():
-                save_model_config(f'checkpoint/{model_state_name}', model_name, train_callback_args.best_model.mt5.state_dict(), train_callback_args.best_model.config.to_dict())
-                logger.info(f'Saved model config at step {train_callback_args.get_cumulated_step()}')
-
-        train_model(
-            epochs,
-            device,
-            train_dataloader,
-            model,
-            loss_fn,
-            optimizer,
-            after_each_step_fn=after_each_step_fn
-        )
-
-    else:
-        raise ValueError(f"Unknown task: {task}")
+    train_model(
+        epochs,
+        device,
+        train_dataloader,
+        model,
+        loss_fn,
+        optimizer,
+        after_each_step_fn=after_each_step_fn,
+        disable_tqdm=True
+    )
 
 
 if __name__ == "__main__":

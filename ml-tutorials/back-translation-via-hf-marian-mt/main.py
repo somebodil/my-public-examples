@@ -24,8 +24,8 @@ def main():
     out_text = translate("Helsinki-NLP/opus-mt-en-fr", src_text)
     back_translated_text = translate("Helsinki-NLP/opus-mt-fr-en", out_text)
 
-    logger.info(f"src_text : {src_text}")
-    logger.info(f"back_translated_text {back_translated_text}")
+    logger.debug(f"src_text : {src_text}")
+    logger.debug(f"back_translated_text {back_translated_text}")
 
 
 if __name__ == "__main__":
