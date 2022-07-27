@@ -242,7 +242,12 @@ def main():
         return criterion(predicts, labels)
 
     def score_fn(predicts, labels):
-        return spearmanr(predicts, labels)[0]
+        score = spearmanr(predicts, labels)[0]
+        if score == "nan":
+            logger.debug(f"predicts : {predicts}")
+            logger.debug(f"labels : {labels}")
+
+        return score
 
     def after_each_step_fn(train_callback_args):
         if train_callback_args.is_start_of_train() \
