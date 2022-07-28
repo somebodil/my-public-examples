@@ -20,16 +20,7 @@ logger = logging.getLogger(__name__)
 
 def encode(cls, input_ids, attention_mask, **kwargs):
     mt5_out = cls.mt5(input_ids, attention_mask)[0]
-
-    batch_size = mt5_out.shape[0]
-    last_indices = attention_mask.sum(dim=-1) - 1
-
-    pooler_out = []
-    for i in range(batch_size):
-        pooler_out.append(torch.mean(mt5_out[i, 0:last_indices[i]], dim=0))
-
-    pooler_out = torch.stack(pooler_out, dim=0)
-    return pooler_out.type(torch.float64)  # To prevent Cosine similarity returning nan because of overflow
+    return (mt5_out * attention_mask.unsqueeze(-1)).sum(1) / attention_mask.sum(-1).unsqueeze(-1)  # pooling by avg
 
 
 class MT5ForValidationOnStsb(nn.Module):
