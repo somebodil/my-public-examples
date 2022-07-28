@@ -281,6 +281,24 @@ def main():
 
             logger.debug(f'Step {acc_step} glue klue val score: [{glue_val_score:.2}, {klue_val_score:.2}]')
 
+    _, glue_val_score = evaluate_model(
+        device,
+        validation_dataloader_glue,
+        model,
+        score_fn,
+        disable_tqdm=True
+    )
+
+    _, klue_val_score = evaluate_model(
+        device,
+        validation_dataloader_klue,
+        model,
+        score_fn,
+        disable_tqdm=True
+    )
+
+    logger.debug(f'Before training, glue klue val score: [{glue_val_score:.2}, {klue_val_score:.2}]')
+
     model, _, best_val_acc_step, best_val_loss, best_val_score = train_model(
         epochs,
         device,
