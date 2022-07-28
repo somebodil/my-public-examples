@@ -250,9 +250,7 @@ def main():
         return score
 
     def after_each_step_fn(train_callback_args):
-        if train_callback_args.is_start_of_train() \
-                or train_callback_args.is_step_interval(250) \
-                or train_callback_args.is_end_of_train():
+        if train_callback_args.is_step_interval(250) or train_callback_args.is_end_of_train():
             _, acc_step = train_callback_args.get_epoch_step()
             train_callback_args.get_n_clear_train_args()
 
