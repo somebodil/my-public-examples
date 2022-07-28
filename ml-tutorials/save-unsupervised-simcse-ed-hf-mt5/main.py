@@ -284,7 +284,7 @@ def main():
     _, glue_val_score = evaluate_model(
         device,
         validation_dataloader_glue,
-        model,
+        MT5ForValidationOnStsb(model.mt5.state_dict(), model.config.to_dict()),
         score_fn,
         disable_tqdm=True
     )
@@ -292,7 +292,7 @@ def main():
     _, klue_val_score = evaluate_model(
         device,
         validation_dataloader_klue,
-        model,
+        MT5ForValidationOnStsb(model.mt5.state_dict(), model.config.to_dict()),
         score_fn,
         disable_tqdm=True
     )
