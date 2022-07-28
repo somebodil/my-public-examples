@@ -14,7 +14,11 @@ from transformers import set_seed, T5Tokenizer, MT5Config, MT5EncoderModel
 
 from util import train_model, evaluate_model
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+    datefmt='%Y-%m-%d:%H:%M:%S',
+    level=logging.DEBUG
+)
 logger = logging.getLogger(__name__)
 
 
@@ -122,7 +126,7 @@ def main():
     parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
     parser.add_argument('--batch_max_size', default=12, type=int)
     parser.add_argument('--epochs', default=1, type=int)
-    parser.add_argument('--lr', default=1e-4, type=float)
+    parser.add_argument('--lr', default=1e-3, type=float)
 
     parser.add_argument('--model_state_name', default='mt5-small-model-state.pt', type=str)
 
@@ -299,7 +303,7 @@ def main():
     )
 
     save_model_config(f'checkpoint/{model_state_name}', model_name, model.mt5.state_dict(), model.config.to_dict())
-    logger.debug(f"Best (glue + klue) acc_step && score : ({best_val_acc_step}, {best_val_score})")
+    logger.debug(f"Best (glue + klue) acc_step && score : ({best_val_acc_step}, {best_val_score:.2})")
 
 
 if __name__ == "__main__":

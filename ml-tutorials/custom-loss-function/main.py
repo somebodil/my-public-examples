@@ -4,7 +4,11 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+    datefmt='%Y-%m-%d:%H:%M:%S',
+    level=logging.DEBUG
+)
 logger = logging.getLogger(__name__)
 
 

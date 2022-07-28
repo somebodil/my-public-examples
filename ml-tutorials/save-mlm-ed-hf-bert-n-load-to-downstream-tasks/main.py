@@ -16,7 +16,11 @@ from transformers import set_seed, BertTokenizer, BertConfig, BertModel
 
 from util import train_model
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+    datefmt='%Y-%m-%d:%H:%M:%S',
+    level=logging.DEBUG
+)
 logger = logging.getLogger(__name__)
 
 
