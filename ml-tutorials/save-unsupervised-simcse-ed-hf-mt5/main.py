@@ -58,9 +58,8 @@ class MT5ForFurtherTrain(nn.Module):
         super(MT5ForFurtherTrain, self).__init__()
 
         config = MT5Config.from_pretrained(model_name)  # uses default dropout rate = 0.1
-        config.torch_dtype = torch.float64
         self.config = config
-        self.mt5 = MT5EncoderModel.from_pretrained(model_name, config=self.config, torch_dtype=self.config.torch_dtype)
+        self.mt5 = MT5EncoderModel.from_pretrained(model_name, config=self.config)
 
         # TODO Debug when exactly CosineSimilarity return nan
         cosine = nn.CosineSimilarity(dim=-1)
@@ -119,6 +118,25 @@ def save_model_config(path, model_name, model_state_dict, model_config_dict):
     }, path)
 
 
+def do_eval_for_glue_klue(device, model, score_fn, validation_dataloader_glue, validation_dataloader_klue):
+    _, glue_val_score = evaluate_model(
+        device,
+        validation_dataloader_glue,
+        MT5ForValidationOnStsb(model.mt5.state_dict(), model.config.to_dict()),
+        score_fn,
+        disable_tqdm=True
+    )
+    _, klue_val_score = evaluate_model(
+        device,
+        validation_dataloader_klue,
+        MT5ForValidationOnStsb(model.mt5.state_dict(), model.config.to_dict()),
+        score_fn,
+        disable_tqdm=True
+    )
+
+    return glue_val_score, klue_val_score
+
+
 def main():
     # Parser --
     parser = argparse.ArgumentParser()
@@ -126,7 +144,7 @@ def main():
     parser.add_argument('--seed', default=4885, type=int)
 
     parser.add_argument('--model_name', default='google/mt5-small', type=str)  # should be t5 base
-    parser.add_argument('--batch_max_size', default=12, type=int)
+    parser.add_argument('--batch_max_size', default=256, type=int)
     parser.add_argument('--epochs', default=1, type=int)
     parser.add_argument('--lr', default=1e-3, type=float)
 
@@ -255,20 +273,12 @@ def main():
             config = train_callback_args.model.config
             model = MT5ForValidationOnStsb(mt5.state_dict(), config.to_dict())
 
-            _, glue_val_score = evaluate_model(
+            glue_val_score, klue_val_score = do_eval_for_glue_klue(
                 device,
+                model,
+                score_fn,
                 validation_dataloader_glue,
-                model,
-                score_fn,
-                disable_tqdm=True
-            )
-
-            _, klue_val_score = evaluate_model(
-                device,
-                validation_dataloader_klue,
-                model,
-                score_fn,
-                disable_tqdm=True
+                validation_dataloader_klue
             )
 
             if train_callback_args.is_greater_than_best_val_score(glue_val_score + klue_val_score):
@@ -276,20 +286,12 @@ def main():
 
             logger.debug(f'Step {acc_step} glue klue val score: [{glue_val_score:.2}, {klue_val_score:.2}]')
 
-    _, glue_val_score = evaluate_model(
+    glue_val_score, klue_val_score = do_eval_for_glue_klue(
         device,
+        model,
+        score_fn,
         validation_dataloader_glue,
-        MT5ForValidationOnStsb(model.mt5.state_dict(), model.config.to_dict()),
-        score_fn,
-        disable_tqdm=True
-    )
-
-    _, klue_val_score = evaluate_model(
-        device,
-        validation_dataloader_klue,
-        MT5ForValidationOnStsb(model.mt5.state_dict(), model.config.to_dict()),
-        score_fn,
-        disable_tqdm=True
+        validation_dataloader_klue
     )
 
     logger.debug(f'Before training, glue klue val score: [{glue_val_score:.2}, {klue_val_score:.2}]')
