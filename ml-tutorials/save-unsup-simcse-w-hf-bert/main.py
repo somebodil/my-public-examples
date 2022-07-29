@@ -250,12 +250,11 @@ def main():
 
             bert = train_callback_args.model.bert
             config = train_callback_args.model.config
-            model = BertForValidationOnStsb(bert.state_dict(), config.to_dict())
 
             _, val_score = evaluate_model(
                 device,
                 validation_dataloader,
-                BertForValidationOnStsb(model.bert.state_dict(), model.config.to_dict()),
+                BertForValidationOnStsb(bert.state_dict(), config.to_dict()),
                 score_fn,
                 disable_tqdm=True
             )
