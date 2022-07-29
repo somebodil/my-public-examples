@@ -62,8 +62,10 @@ class MT5ForFurtherTrain(nn.Module):
         self.config = config
         self.mt5 = MT5EncoderModel.from_pretrained(model_name, config=self.config, torch_dtype=self.config.torch_dtype)
 
+        # TODO Debug when exactly CosineSimilarity return nan
         cosine = nn.CosineSimilarity(dim=-1)
-        self.cosine_similarity = lambda s1, s2: torch.nan_to_num(cosine(torch.nan_to_num(s1), torch.nan_to_num(s2)))
+        # self.cosine_similarity = lambda s1, s2: torch.nan_to_num(cosine(torch.nan_to_num(s1), torch.nan_to_num(s2)))
+        self.cosine_similarity = cosine
         self.temperature = temperature
 
     def forward(self, input_ids, attention_mask, **kwargs):
