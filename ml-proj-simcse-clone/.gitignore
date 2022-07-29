@@ -132,3 +132,7 @@ dmypy.json
 .vscode
 result
 .venv-cu11
+
+# data
+nli_for_simcse.csv
+wiki1m_for_simcse.txt
