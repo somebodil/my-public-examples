@@ -34,18 +34,9 @@ def encode(cls, input_ids, attention_mask, token_type_ids, **kwargs):
 
 
 class BertForValidationOnStsb(nn.Module):
-    def __init__(self, state_dict, config_dict):
+    def __init__(self, bert):
         super(BertForValidationOnStsb, self).__init__()
-
-        config = BertConfig.from_dict(config_dict)
-        self.config = config
-        self.bert = BertModel.from_pretrained(
-            pretrained_model_name_or_path=None,
-            torch_dtype=self.config.torch_dtype,
-            config=self.config,
-            state_dict=state_dict
-        )
-
+        self.bert = bert
         self.cosine_similarity = nn.CosineSimilarity(dim=-1)
 
     def forward(
@@ -170,6 +161,7 @@ def main():
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     model = BertForFurtherTrain(model_name, temperature)
+    model_for_val = BertForValidationOnStsb(model.bert)
     optimizer = Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
     tokenizer = BertTokenizer.from_pretrained(model_name)
@@ -250,14 +242,12 @@ def main():
             _, acc_step = train_callback_args.get_epoch_step()
             train_callback_args.get_n_clear_train_args()
 
-            bert = train_callback_args.model.bert
-            config = train_callback_args.model.config
-            model = BertForValidationOnStsb(bert.state_dict(), config.to_dict())
+            model_for_val.bert = train_callback_args.model.bert
 
             _, val_score = evaluate_model(
                 device,
                 validation_dataloader,
-                model,
+                model_for_val,
                 score_fn,
                 disable_tqdm=True
             )
@@ -270,7 +260,7 @@ def main():
     _, val_score = evaluate_model(
         device,
         validation_dataloader,
-        BertForValidationOnStsb(model.bert.state_dict(), model.config.to_dict()),
+        model_for_val,
         score_fn,
         disable_tqdm=True
     )

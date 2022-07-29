@@ -42,7 +42,7 @@ class TrainCallbackArgs:
         self.best_val_score = score
         self.best_val_epoch = self.epoch
         self.best_val_acc_step = self.get_accumulated_step()
-        self.best_model = copy.deepcopy(self.model).cpu()
+        self.best_model = copy.deepcopy(self.model.cpu())
 
     def get_n_clear_train_args(self):
         train_loss = self.train_loss
