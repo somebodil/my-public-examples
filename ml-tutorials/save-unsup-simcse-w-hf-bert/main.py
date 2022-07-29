@@ -244,17 +244,18 @@ def main():
         return score
 
     def after_each_step_fn(train_callback_args):
-        if train_callback_args.is_step_interval(250) or train_callback_args.is_end_of_train():
+        if train_callback_args.is_step_interval(10) or train_callback_args.is_end_of_train():
             _, acc_step = train_callback_args.get_epoch_step()
             train_callback_args.get_n_clear_train_args()
 
             bert = train_callback_args.model.bert
             config = train_callback_args.model.config
+            model = BertForValidationOnStsb(bert.state_dict(), config.to_dict())
 
             _, val_score = evaluate_model(
                 device,
                 validation_dataloader,
-                BertForValidationOnStsb(bert.state_dict(), config.to_dict()),
+                model,
                 score_fn,
                 disable_tqdm=True
             )

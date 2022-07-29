@@ -119,8 +119,10 @@ def train_model(
                 optimizer.step()
 
                 if after_each_step_fn:
+                    model.cpu()
                     train_callback_args.set_train_score_args(step, epoch, loss, predict, batch, batch_size)
                     after_each_step_fn(train_callback_args)
+                    model.to(device)
 
     return train_callback_args.get_best_val_args()
 
