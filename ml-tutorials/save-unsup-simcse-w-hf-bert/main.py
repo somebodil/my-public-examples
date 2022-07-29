@@ -142,6 +142,7 @@ def main():
 
     parser.add_argument('--temperature', default=0.05, type=float)
     parser.add_argument('--pretrain_dataset', default='wiki1m_for_simcse.txt', type=str)
+    parser.add_argument('--interval', default=10, type=int)
 
     args = parser.parse_known_args()[0]
     setattr(args, 'device', f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu')
@@ -165,6 +166,7 @@ def main():
 
     temperature = args.temperature
     pretrain_dataset = args.pretrain_dataset
+    interval = args.interval
 
     # Prepare tokenizer, dataset (+ dataloader), model, loss function, optimizer, etc --
     model = BertForFurtherTrain(model_name, temperature)
@@ -244,7 +246,7 @@ def main():
         return score
 
     def after_each_step_fn(train_callback_args):
-        if train_callback_args.is_step_interval(10) or train_callback_args.is_end_of_train():
+        if train_callback_args.is_step_interval(interval) or train_callback_args.is_end_of_train():
             _, acc_step = train_callback_args.get_epoch_step()
             train_callback_args.get_n_clear_train_args()
 
